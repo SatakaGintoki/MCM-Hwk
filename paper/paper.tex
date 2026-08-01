@@ -1,0 +1,172 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+\usepackage[left=2.5cm,right=2.5cm,top=2.6cm,bottom=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs,multirow,array}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../figures/}}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+\linespread{1.25}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{数学建模论文}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\keywords}[1]{
+  \par\noindent\textbf{关键词：}#1
+}
+
+\title{\heiti\zihao{2} 论文题目}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+本文针对……问题，建立……模型。首先，……；其次，……；再次，……；最后，……。
+模型结果表明……。本文所建模型具有……特点，可为……提供参考。
+
+\keywords{关键词一；关键词二；关键词三；关键词四}
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{问题重述}
+
+结合题目背景，用自己的语言概括研究对象、已知条件和各小问任务。
+
+\section{问题分析}
+
+说明各问题的建模目标、输入输出、相互关系及总体求解流程。
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.9\textwidth]{workflow.pdf}
+  \caption{总体建模流程图}
+  \label{fig:workflow}
+\end{figure}
+
+\section{模型假设}
+
+\begin{enumerate}[label=\arabic*.]
+  \item 假设一；
+  \item 假设二；
+  \item 假设三。
+\end{enumerate}
+
+\section{符号说明}
+
+\begin{table}[H]
+  \centering
+  \caption{主要符号说明}
+  \label{tab:symbols}
+  \begin{tabular}{clc}
+    \toprule
+    符号 & 含义 & 单位 \\
+    \midrule
+    $x_i$ & 第$i$个输入变量 & -- \\
+    $y_t$ & 时刻$t$的目标变量 & -- \\
+    $\hat y_t$ & 模型预测值 & -- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{数据预处理}
+
+说明缺失值、异常值、时间对齐、标准化及训练集与测试集划分方法。
+
+\section{问题一的模型建立与求解}
+
+\subsection{模型建立}
+
+给出模型原理、变量定义和数学表达式。例如：
+\begin{equation}
+  y_t=f(\bm{x}_t;\bm{\theta})+\varepsilon_t.
+  \label{eq:q1-model}
+\end{equation}
+
+\subsection{参数求解与结果分析}
+
+说明参数估计方法、评价指标和主要结论。
+
+\section{问题二的模型建立与求解}
+
+\subsection{模型建立}
+
+写明问题二相对于问题一新增的机制、约束或优化目标。
+
+\subsection{模型检验}
+
+给出误差分析、对照实验或敏感性分析。
+
+\section{问题三的模型建立与求解}
+
+\subsection{模型建立}
+
+说明动态过程、预测方法或机理与数据驱动模型的结合方式。
+
+\subsection{结果分析}
+
+展示指定情景下的预测结果与模型解释。
+
+\section{问题四的模型建立与求解}
+
+\subsection{评价指标与分级方法}
+
+说明指标构造、权重或阈值来源以及分级依据。
+
+\subsection{评价结果}
+
+汇总风险等级、分类结果和管理建议。
+
+\section{模型评价}
+
+\subsection{模型优点}
+
+\begin{enumerate}[label=\arabic*.]
+  \item 优点一；
+  \item 优点二。
+\end{enumerate}
+
+\subsection{模型不足与改进}
+
+\begin{enumerate}[label=\arabic*.]
+  \item 不足与改进方向一；
+  \item 不足与改进方向二。
+\end{enumerate}
+
+\section{结论}
+
+按问题顺序概括主要模型、关键数值结果和实际意义。
+
+\begin{thebibliography}{99}
+
+\bibitem{reference1}
+作者. 文献题目[J]. 期刊名称, 年份, 卷(期): 页码.
+
+\bibitem{reference2}
+Author. Title of the reference[J]. Journal, Year, Volume(Issue): Pages.
+
+\end{thebibliography}
+
+\appendix
+\section{程序与补充材料说明}
+
+列出各代码文件、结果表格和附件的对应关系。
+
+\end{document}
