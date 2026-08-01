@@ -696,7 +696,11 @@ def result_to_dict(ev: EvalResult) -> dict:
         },
         "margins": {k: float(v) for k, v in ev.margins.items()},
         "at_bound": {
-            n: bool(abs(ev.y[i] - L_BOUNDS[i]) < 1e-6 or abs(ev.y[i] - U_BOUNDS[i]) < 1e-6)
+            # 温度 0.05°C / 速度 0.05 cm/min 内视为触及边界（避免 1e-6 漏判贴边解）
+            n: bool(
+                abs(ev.y[i] - L_BOUNDS[i]) < (0.05 if i < 4 else 0.05)
+                or abs(ev.y[i] - U_BOUNDS[i]) < (0.05 if i < 4 else 0.05)
+            )
             for i, n in enumerate(VAR_NAMES)
         },
     }

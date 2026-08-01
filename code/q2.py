@@ -32,6 +32,8 @@ SETPOINTS_Q2 = np.array(
     [182, 182, 182, 182, 182, 203, 237, 254, 254, 25, 25], dtype=float
 )
 V_MIN, V_MAX = 65.0, 100.0
+# 官方报告时间步长（与问题一/三/四一致）
+DT_REPORT = 0.025
 # 升温段局部微负斜率容差（缝隙离散可能产生数值噪声）
 SLOPE_UP_TOL = 1e-3
 
@@ -307,8 +309,8 @@ def main() -> None:
         f"ref={plate.eta_ref:.4f}, cool={plate.eta_cool:.4f}"
     )
 
-    print("\n[1] 稀疏扫描 (步长 1 cm/min)...")
-    scan = sparse_scan(plate, step=1.0, dt=0.1)
+    print(f"\n[1] 稀疏扫描 (步长 1 cm/min, dt={DT_REPORT})...")
+    scan = sparse_scan(plate, step=1.0, dt=DT_REPORT)
     scan_df = pd.DataFrame(
         [
             {
@@ -333,7 +335,7 @@ def main() -> None:
         raise SystemExit("扫描未发现可行速度，停止。")
 
     print("\n[2] Brent 约束边界寻根...")
-    roots = find_boundary_roots(plate, scan, dt=0.1)
+    roots = find_boundary_roots(plate, scan, dt=DT_REPORT)
     for k, v in sorted(roots.items(), key=lambda kv: kv[1]):
         print(f"  {k}: v*={v:.4f}")
     (OUT_DIR / "constraint_roots.json").write_text(
@@ -341,7 +343,7 @@ def main() -> None:
     )
 
     print("\n[3] 确定最大允许速度...")
-    v_max, detail = max_feasible_speed(plate, scan, roots, dt=0.1, report_step=0.01)
+    v_max, detail = max_feasible_speed(plate, scan, roots, dt=DT_REPORT, report_step=0.01)
     ev = detail["at_report"]
     active = active_constraints(ev["margins"], roots, v_max, eps=0.15)
 
@@ -360,7 +362,7 @@ def main() -> None:
     print("\n[4] 边界两侧验证 (±0.01):")
     for dv in (-0.01, 0.0, 0.01):
         vv = min(V_MAX, max(V_MIN, round(v_max + dv, 10)))
-        e = evaluate_speed(vv, plate, dt=0.1)
+        e = evaluate_speed(vv, plate, dt=DT_REPORT)
         print(
             f"  v={vv:.2f}: feas={e['feasible']}, "
             f"Tmax={e['T_peak']:.4f}, tau217={e['tau_217']}, Gmin={e['min_margin']:.4f}"
@@ -475,6 +477,10 @@ def main() -> None:
     table.to_csv(OUT_DIR / "metrics_at_vmax.csv", index=False, encoding="utf-8-sig")
 
     summary = {
+        "official_grid": {
+            "dt_report": DT_REPORT,
+            "note": "扫描、Brent 与报告均使用 dt_report",
+        },
         "setpoints": SETPOINTS_Q2.tolist(),
         "v_max_report": v_max,
         "v_star_continuous": detail["v_star_continuous"],

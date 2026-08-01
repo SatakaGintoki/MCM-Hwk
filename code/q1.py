@@ -37,6 +37,9 @@ FURNACE_LEN = FRONT_LEN + N_ZONES * ZONE_LEN + (N_ZONES - 1) * GAP_LEN + FRONT_L
 THICKNESS_M = 1.5e-4
 HALF_THICKNESS = THICKNESS_M / 2.0
 ALPHA_FIXED = 1.5e-7  # m^2/s，笔记 5.6：固定不拟合
+# 官方报告时间步长（与问题三/四 dt_verify 一致）
+DT_REPORT = 0.025
+DT_CALIB = 0.1  # 标定可用稍粗网格；最终预测与 result.csv 用 DT_REPORT
 
 # 标定 / 问题一温区设定
 SETPOINTS_CAL = np.array([175, 175, 175, 175, 175, 195, 235, 255, 255, 25, 25], dtype=float)
@@ -463,8 +466,8 @@ def main() -> None:
     print("=" * 60)
     u_q1 = 78.0
     t_end_q1 = FURNACE_LEN / (u_q1 / 60.0)
-    t_q1, T_q1 = simulate_plate(SETPOINTS_Q1, u_q1, plate, t_end=t_end_q1, dt=0.05)
-    t_q1_m1, T_q1_m1 = simulate_lumped(SETPOINTS_Q1, u_q1, lumped, t_end=t_end_q1, dt=0.05)
+    t_q1, T_q1 = simulate_plate(SETPOINTS_Q1, u_q1, plate, t_end=t_end_q1, dt=DT_REPORT)
+    t_q1_m1, T_q1_m1 = simulate_lumped(SETPOINTS_Q1, u_q1, lumped, t_end=t_end_q1, dt=DT_REPORT)
 
     probe_rows = []
     print("\n指定位置中心温度（M2）:")
@@ -479,12 +482,14 @@ def main() -> None:
     T_out = interpolate_temperature(t_q1, T_q1, t_out)
     result_df = pd.DataFrame({"时间(s)": t_out, "温度(摄氏度)": np.round(T_out, 4)})
     result_df.to_csv(OUT_DIR / "result.csv", index=False, encoding="utf-8-sig")
+    result_df.to_csv(ROOT / "result_q1.csv", index=False, encoding="utf-8-sig")
     try:
         result_df.to_csv(ROOT / "result.csv", index=False, encoding="utf-8-sig")
-        print(f"\n已写入 result.csv ，共 {len(t_out)} 行")
+        print(f"\n已写入 result.csv / result_q1.csv / results/q1/result.csv ，共 {len(t_out)} 行")
     except PermissionError:
-        result_df.to_csv(ROOT / "result_q1.csv", index=False, encoding="utf-8-sig")
-        print(f"\nresult.csv 被占用，已写入 result_q1.csv 与 results/q1/result.csv")
+        # Windows 下若 Excel 锁住 result.csv，至少保证备份文件完整
+        print(f"\nresult.csv 被占用，已写入 result_q1.csv 与 results/q1/result.csv（共 {len(t_out)} 行）")
+        print("请关闭 Excel 后手动复制 results/q1/result.csv → 根目录 result.csv")
 
     metrics_q1 = process_metrics(t_q1, T_q1)
     print("\n问题一工艺特征（M2）:")
@@ -507,6 +512,11 @@ def main() -> None:
     plt.close(fig)
 
     summary = {
+        "official_grid": {
+            "dt_report": DT_REPORT,
+            "dt_calib": DT_CALIB,
+            "note": "预测与 result.csv 使用 dt_report；标定拟合可用 dt_calib",
+        },
         "lumped_params": {
             "k_pre": lumped.k_pre,
             "k_soak": lumped.k_soak,
