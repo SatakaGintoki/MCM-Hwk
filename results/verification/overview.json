@@ -1,0 +1,24 @@
+{
+  "official_dt": 0.025,
+  "q3_theoretical_A": 344.54735962057794,
+  "q3_theoretical_y": {
+    "S1_5": 184.9994889190166,
+    "S6": 185.0001510664052,
+    "S7": 225.00490265687984,
+    "S8_9": 263.2235621650583,
+    "v": 96.12345926434594
+  },
+  "q3_engineering_A": 377.9310074416077,
+  "q3_engineering_y": {
+    "S1_5": 184.99950643373563,
+    "S6": 185.00001234802795,
+    "S7": 225.0,
+    "S8_9": 263.7257200462602,
+    "v": 94.4949479859226
+  },
+  "outputs": {
+    "q3_summary": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\results\\q3\\summary.json",
+    "verification": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\results\\verification",
+    "figures_verification": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\figures\\verification"
+  }
+}
