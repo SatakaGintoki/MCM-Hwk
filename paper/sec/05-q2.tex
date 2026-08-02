@@ -1,0 +1,65 @@
+\section{问题二：最大允许过炉速度}
+
+\subsection{约束模型}
+
+本问四组温区设定依次为 $182\,\dC$、$203\,\dC$、$237\,\dC$ 和 $254\,\dC$。唯一决策变量是速度，其范围为 $65\sim100\,$cm/min。对每个候选速度调用上一节模型，得到峰值温度 $T_{\max}$、升降温速率、升温时处于 $150\sim190\,\dC$ 的时间 $\tau_{150-190}$ 以及高于 $217\,\dC$ 的时间 $\tau_{217}$。将表 \ref{tab:limits} 展开为十个非负裕量：
+
+\begin{equation}
+\begin{aligned}
+  &g_1=3-r_{\mathrm{up}}^{\max}, &&g_2=r_{\mathrm{up}}^{\min}+\epsilon_0,
+  &&g_3=r_{\mathrm{dn}}^{\min}+3, &&g_4=-r_{\mathrm{dn}}^{\max},\\
+  &g_5=\tau_{150-190}-60, &&g_6=120-\tau_{150-190},
+  &&g_7=\tau_{217}-40, &&g_8=90-\tau_{217},\\
+  &g_9=T_{\max}-240, &&g_{10}=250-T_{\max}.&&&&
+\end{aligned}
+\label{eq:margins}
+\end{equation}
+
+其中 $\epsilon_0=10^{-3}\,\dC$/s 用于吸收恒温段接近零斜率时的数值扰动。若曲线未穿越某一阈值，则相应时长约束直接判为不满足。于是问题写成
+
+\begin{equation}
+  \max_{65\le v\le100}v,
+  \qquad \text{s.t.}\quad g_j(v)\ge0,\ j=1,\ldots,10.
+  \label{eq:q2}
+\end{equation}
+
+这里仍使用问题一辨识出的参数。速度只改变 $x(t)=vt/60$，不改变炉体本身；若随候选速度重新拟合换热参数，优化的将不再是同一台回焊炉。
+
+\subsection{扫描、求根与边界复核}
+
+虽然峰值温度随速度在本工况下近似单调下降，但所有工艺指标未必具有相同单调性，因此不直接对整个区间二分。具体步骤为：先以 $1\,$cm/min 扫描 $[65,100]$，记录每个 $g_j$ 的符号；再对出现符号变化的子区间用 Brent 法求解 $g_j(v)=0$；最后以所有根和扫描点划分子区间，在区间中点复核可行性。
+
+得到三个边界根，见表 \ref{tab:roots}。其中 $g_8=0$ 决定可行域下界，$g_9=0$ 决定上界，而 $g_5=0$ 位于不可行区域，不能形成新的可行段。
+
+\begin{table}[htbp]
+  \centering
+  \caption{问题二的约束边界}
+  \label{tab:roots}
+  \small
+  \begin{tabular}{llrl}
+    \toprule
+    约束 & 物理含义 & 根/(cm/min) & 对可行域的作用 \\
+    \midrule
+    $g_8=0$ & 高于 $217\,\dC$ 的时间达到 $90\,$s & $68.0016$ & 下界 \\
+    $g_9=0$ & 峰值温度降至 $240\,\dC$ & $79.5937$ & 上界 \\
+    $g_5=0$ & $150\sim190\,\dC$ 时间降至 $60\,$s & $97.6745$ & 已在可行域外 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+连续速度上界为 $v^*=79.59363\,$cm/min。按 $0.01\,$cm/min 的报告精度向可行侧取值，得到
+
+\begin{equation}
+  \boxed{v_{\max}=79.60\ \mathrm{cm/min}}.
+\end{equation}
+
+该速度下峰值温度为 $240.00185\,\dC$，最大升温速率为 $2.19241\,\dC$/s，最小降温速率为 $-1.98717\,\dC$/s，$\tau_{150-190}=83.7863\,$s，$\tau_{217}=71.4307\,$s，均满足约束。进一步在同一时间网格上检验边界两侧：$79.60\,$cm/min 可行，而 $79.61\,$cm/min 时峰值降至 $239.99343\,\dC$，故 $79.60$ 确为报告精度下的最大可行速度。
+
+图 \ref{fig:q2scan} 揭示了可行区间的形成过程。低速时板在高温区停留过久，先违反 $\tau_{217}\le90\,$s；速度提高后进入可行域；当速度超过 $79.59\,$cm/min，吸热时间不足，峰值又低于 $240\,\dC$。因此本问并不存在“速度越慢越安全”的单调关系。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.84\textwidth]{paper/q2_constraint_boundary.pdf}
+  \caption{峰值温度和液相线以上时间随速度的变化及可行区间}
+  \label{fig:q2scan}
+\end{figure}

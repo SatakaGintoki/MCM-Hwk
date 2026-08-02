@@ -1,0 +1,118 @@
+\section{问题四：面积与对称性的协调优化}
+
+\subsection{峰值镜像对称指标}
+
+第三问只考虑峰值左侧面积。第四问又要求高于 $217\,\dC$ 的左右两段尽量以峰值时刻为中心对称。记上穿、峰值和下穿 $217\,\dC$ 的时刻分别为 $t_u,t_p,t_d$，并定义
+
+\begin{equation}
+  A_L=\int_{t_u}^{t_p}[T(t)-217]\,\mathrm dt,
+  \qquad
+  A_R=\int_{t_p}^{t_d}[T(t)-217]\,\mathrm dt.
+\end{equation}
+
+将峰值两侧按到峰值的时间距离 $\tau$ 对齐：
+
+\begin{equation}
+\begin{aligned}
+  q_L(\tau)&=\max\{T(t_p-\tau)-217,0\},\\
+  q_R(\tau)&=\max\{T(t_p+\tau)-217,0\}.
+\end{aligned}
+\end{equation}
+
+左右液相时长分别为 $\tau_L=t_p-t_u$、$\tau_R=t_d-t_p$。在较短一侧结束后补零，积分到 $\tau_{\max}=\max(\tau_L,\tau_R)$，得到镜像误差
+
+\begin{equation}
+  E_{\mathrm{sym}}=\int_0^{\tau_{\max}}
+  |q_L(\tau)-q_R(\tau)|\,\mathrm d\tau.
+  \label{eq:esym}
+\end{equation}
+
+因此，左右持续时间不同会形成补零区域，曲线形状不同会形成重叠区内的面积差，两类不对称均被计入。
+
+若用 $A_L+A_R$ 作为分母，优化器可能通过提高峰值或延长液相时间扩大分母，从而在绝对误差没有改善时仍使比值减小。为避免这一现象，采用由题目上限确定且与候选解无关的固定尺度
+
+\begin{equation}
+  S_0=(250-217)\times90=2970\ \dC\!\cdot\!\mathrm s,
+  \qquad
+  J_{\mathrm{sym}}=\frac{E_{\mathrm{sym}}}{S_0}.
+  \label{eq:jsym}
+\end{equation}
+
+$J_{\mathrm{sym}}=0$ 对应完全对称，数值越小越好。固定正比例缩放不会改变最优解，同时保证不同工艺之间可以直接比较。
+
+\subsection{约束法求解双目标模型}
+
+问题四写成双目标约束优化：
+
+\begin{equation}
+  \min_{\bm y\in\Omega}\big(A_L(\bm y),J_{\mathrm{sym}}(\bm y)\big),
+  \qquad \text{s.t.}\quad g_j(\bm y)\ge0.
+  \label{eq:q4}
+\end{equation}
+
+若直接把两个目标线性加权，不仅需要预先规定权重，而且对非凸前沿的内部非支撑解可能搜索不到\cite{miettinen1998}。本文把面积转化为上限约束：
+
+\begin{equation}
+  \min_{\bm y}J_{\mathrm{sym}}(\bm y),
+  \qquad
+  \text{s.t.}\quad A_L(\bm y)\le\varepsilon_A,quad g_j(\bm y)\ge0.
+  \label{eq:eps}
+\end{equation}
+
+令 $\varepsilon_A$ 从问题三最小面积逐步增加。
+
+每个子问题仍采用差分进化和多起点 COBYLA，并在 $\Delta t=0.025\,$s 网格上统一复核。问题三的最优解自然成为该 Pareto 前沿的面积端点。
+
+\subsection{Pareto 结果与方案选择}
+
+严格非支配筛选得到 6 个点。其中两个点相对于面积端点的对称性改善仅为 $3.8\times10^{-4}$ 和 $4.0\times10^{-4}$，与时间离散带来的 $J_{\mathrm{sym}}$ 误差同量级。采用 $5\times10^{-4}$ 的数值分辨阈值后，保留表 \ref{tab:front} 的三个实用方案。其余精确点仍保存在结果文件中，但不据此作超出数值精度的工艺判断。
+
+\begin{table}[htbp]
+  \centering
+  \caption{面积--对称性实用 Pareto 方案}
+  \label{tab:front}
+  \small
+  \begin{tabular}{clrrr}
+    \toprule
+    方案 & 定位 & $A_L$/(\dC$\cdot$s) & $J_{\mathrm{sym}}$ & $v$/(cm/min) \\
+    \midrule
+    P1 & 面积最小（问题三解） & $410.6806$ & $0.0266313$ & $99.5068$ \\
+    P4 & 均衡备选 & $415.7154$ & $0.0260712$ & $94.5129$ \\
+    P6 & 对称优先 & $418.1586$ & $0.0248698$ & $89.6887$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+从图 \ref{fig:q4} 左侧可见，实用前沿在目标空间中向远离理想点的一侧内凹，不存在稳定的几何膝点；这也意味着线性加权和无法生成该前沿上的内部支撑解。因此不能声称某个中间点是与偏好无关的“唯一最佳折中”。
+
+若把两个目标的端点极差分别归一化后等权比较，可选 P4 作为均衡方案。考虑到第四问是在第三问基础上专门增加对称性要求，而 P6 相对于 P1 只增加 $1.82\%$ 面积，却使 $J_{\mathrm{sym}}$ 下降 $6.61\%$，本文把 P6 作为对称优先推荐解，同时保留 P4 供更强调热暴露的场景选择。P6 的参数见表 \ref{tab:q4final}。
+
+\begin{table}[htbp]
+  \centering
+  \caption{问题四对称优先推荐方案}
+  \label{tab:q4final}
+  \small
+  \begin{tabular}{lr@{\qquad}lr}
+    \toprule
+    工艺参数 & 数值 & 炉温曲线指标 & 数值 \\
+    \midrule
+    $S_{1-5}$/\dC & $171.3952$ & $A_L$/(\dC$\cdot$s) & $418.1586$ \\
+    $S_6$/\dC & $188.9400$ & $A_R$/(\dC$\cdot$s) & $344.2953$ \\
+    $S_7$/\dC & $226.3711$ & $E_{\mathrm{sym}}$/(\dC$\cdot$s) & $73.8633$ \\
+    $S_{8-9}$/\dC & $264.9448$ & $J_{\mathrm{sym}}$ & $0.0248698$ \\
+    $v$/(cm/min) & $89.6887$ & 峰值温度/\dC & $240.0109$ \\
+    \midrule
+    $\tau_L$/s & $30.6882$ & $\tau_R$/s & $25.0382$ \\
+    $\tau_{150-190}$/s & $63.6662$ & $\tau_{217}$/s & $55.7264$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+图 \ref{fig:q4} 右侧将推荐曲线沿峰值时刻对折。左右曲线形状相近，但升温侧持续时间仍比降温侧长约 $5.65\,$s。其原因是温区 10--11 固定在 $25\,\dC$，冷却段换热参数也不是决策变量，下降侧的宽度不能像前段温度和速度那样自由调节。因此推荐方案是现有控制变量下的最优协调，而不是严格的镜面对称。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\textwidth]{paper/q4_tradeoff_mirror.pdf}
+  \caption{问题四的面积--对称性前沿（左）与推荐解峰值镜像（右）}
+  \label{fig:q4}
+\end{figure}

@@ -1,14 +1,4 @@
-"""
-问题二：最大允许过炉速度（单文件版）
-
-流程：
-1. 继承问题一标定参数（优先读 results/q1/summary.json，否则现场标定）
-2. 固定问题二温区设定，只改变传送带速度 v ∈ [65, 100]
-3. 稀疏扫描 + Brent 约束边界寻根 + 区间可行性验证
-4. 输出最大速度、有效约束、指标表与曲线
-
-运行：python code/q2.py
-"""
+"""问题二：扫描约束边界并求最大允许传送速度。"""
 from __future__ import annotations
 
 import json
@@ -20,7 +10,6 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq
 
-# 复用问题一仿真器与标定
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import q1
 
@@ -32,15 +21,10 @@ SETPOINTS_Q2 = np.array(
     [182, 182, 182, 182, 182, 203, 237, 254, 254, 25, 25], dtype=float
 )
 V_MIN, V_MAX = 65.0, 100.0
-# 官方报告时间步长（与问题一/三/四一致）
 DT_REPORT = 0.025
-# 升温段局部微负斜率容差（缝隙离散可能产生数值噪声）
 SLOPE_UP_TOL = 1e-3
 
 
-# ---------------------------------------------------------------------------
-# 工艺指标与约束裕量
-# ---------------------------------------------------------------------------
 def evaluate_speed(v: float, plate: q1.PlateParams, dt: float = 0.1) -> dict:
     """给定速度，仿真并返回指标、裕量与可行性。"""
     t_end = q1.FURNACE_LEN / (v / 60.0)
@@ -51,7 +35,6 @@ def evaluate_speed(v: float, plate: q1.PlateParams, dt: float = 0.1) -> dict:
     T_peak = float(T[i_peak])
     dTdt = np.gradient(T, t)
 
-    # 峰值前/后斜率
     if i_peak <= 1:
         r_up_max = r_up_min = float("nan")
     else:
@@ -77,7 +60,6 @@ def evaluate_speed(v: float, plate: q1.PlateParams, dt: float = 0.1) -> dict:
             t[i] + (level - T[i]) / (T[i + 1] - T[i] + 1e-30) * (t[i + 1] - t[i])
         )
 
-    # 150–190：仅升温段
     t150 = cross_time(150.0, True)
     t190 = cross_time(190.0, True)
     if np.isfinite(t150) and np.isfinite(t190) and t190 > t150 and t190 <= t_peak + 1e-9:
@@ -92,7 +74,6 @@ def evaluate_speed(v: float, plate: q1.PlateParams, dt: float = 0.1) -> dict:
     else:
         tau_217 = float("nan")
 
-    # 未穿越阈值 → 直接不可行（裕量记为很大负值）
     def g_or_fail(ok: bool, value: float) -> float:
         return value if ok else -1e3
 
@@ -140,21 +121,16 @@ def active_constraints(margins: dict, roots: dict[str, float], v_max: float, eps
             near_roots.append(name)
     if near_roots:
         return sorted(set(near_roots))
-    # 回退：只看峰值/时间类下界裕量
     keys = ["g5_tau150_lo", "g7_tau217_lo", "g9_peak_lo"]
     return [k for k in keys if 0.0 <= margins.get(k, 1e9) <= eps]
 
 
-# ---------------------------------------------------------------------------
-# 搜索：扫描 + Brent + 区间验证
-# ---------------------------------------------------------------------------
 def sparse_scan(
     plate: q1.PlateParams, step: float = 1.0, dt: float = 0.1
 ) -> list[dict]:
     rows = []
     for v in np.arange(V_MIN, V_MAX + 0.5 * step, step):
         ev = evaluate_speed(float(v), plate, dt=dt)
-        # 扫描表不存整条曲线，省内存
         rows.append({k: ev[k] for k in ev if k not in ("t", "T")})
         print(
             f"  v={v:6.1f}: feas={ev['feasible']}, "
@@ -167,7 +143,7 @@ def sparse_scan(
 def find_boundary_roots(
     plate: q1.PlateParams, scan: list[dict], dt: float = 0.1
 ) -> dict[str, float]:
-    """对每个裕量在符号变化区间用 Brent 求 g_j(v)=0。"""
+    """Locate every sign-changing constraint boundary with Brent's method."""
     roots: dict[str, float] = {}
     names = list(scan[0]["margins"].keys())
 
@@ -175,7 +151,6 @@ def find_boundary_roots(
         for a, b in zip(scan[:-1], scan[1:]):
             ga = a["margins"][name]
             gb = b["margins"][name]
-            # 需要穿过 0：一端非负一端负
             if ga * gb < 0:
 
                 def f(v: float, n=name) -> float:
@@ -184,7 +159,6 @@ def find_boundary_roots(
                 try:
                     root = brentq(f, a["v"], b["v"], xtol=1e-4, maxiter=80)
                     key = f"{name}@{root:.4f}"
-                    # 同一约束可能多根，都记下；后面用区间法汇总
                     roots[key] = float(root)
                 except ValueError:
                     pass
@@ -198,12 +172,8 @@ def max_feasible_speed(
     dt: float = 0.1,
     report_step: float = 0.01,
 ) -> tuple[float, dict]:
-    """
-    将扫描点与约束边界排序，检验子区间，取最高可行区间右端点。
-    最终按 report_step（默认 0.01 cm/min）向可行侧取整。
-    """
+    """Return the upper end of the highest feasible speed interval."""
     boundaries = sorted({V_MIN, V_MAX, *[r["v"] for r in scan], *roots.values()})
-    # 去重
     cleaned = [boundaries[0]]
     for x in boundaries[1:]:
         if abs(x - cleaned[-1]) > 1e-6:
@@ -216,20 +186,15 @@ def max_feasible_speed(
             feasible_intervals.append((lo, hi))
 
     if not feasible_intervals:
-        raise RuntimeError("在 [65,100] 内未找到可行速度，请检查标定参数或约束实现")
+        raise RuntimeError("No feasible speed was found in [65, 100]")
 
-    # 最高可行区间
     lo, hi = feasible_intervals[-1]
-    # 右端点：若 hi 可行则取 hi，否则取略小于边界的可行值
     ev_hi = evaluate_speed(hi, plate, dt=dt)
     if ev_hi["feasible"]:
         v_star = hi
         ev_star = ev_hi
     else:
-        # 在 (lo, hi) 上对“可行性边界”细化：找最大可行 v
-        # 用二分：左可行右不可行
         left, right = lo, hi
-        # 确保 left 可行
         if not evaluate_speed(left, plate, dt=dt)["feasible"]:
             left = mid = 0.5 * (lo + hi)
         for _ in range(40):
@@ -241,9 +206,7 @@ def max_feasible_speed(
         v_star = left
         ev_star = evaluate_speed(v_star, plate, dt=dt)
 
-    # 按 report_step 向可行侧取整（默认 0.01 cm/min）
     v_report = np.floor(v_star / report_step + 1e-9) * report_step
-    # 再向右探到该精度下仍可行的最大格子点
     cand = round(v_report, 10)
     while cand + report_step <= V_MAX + 1e-12:
         nxt = round(cand + report_step, 10)
@@ -266,9 +229,6 @@ def max_feasible_speed(
     }
 
 
-# ---------------------------------------------------------------------------
-# 参数加载
-# ---------------------------------------------------------------------------
 def load_or_calibrate_plate() -> q1.PlateParams:
     summary_path = ROOT / "results" / "q1" / "summary.json"
     if summary_path.exists():
@@ -280,19 +240,17 @@ def load_or_calibrate_plate() -> q1.PlateParams:
             eta_soak=p["eta_soak"],
             eta_ref=p["eta_ref"],
             eta_cool=p["eta_cool"],
+            eta_cool_late=p.get("eta_cool_late", p["eta_cool"]),
             eta_r=p.get("eta_r", 0.0),
             alpha=p.get("alpha", q1.ALPHA_FIXED),
         )
     print("未找到 q1 summary，现场用附件重新标定...")
     t_obs, y_obs = q1.load_calibration_data()
-    plate, metrics = q1.fit_plate(t_obs, y_obs, fit_radiation=True)
+    plate, metrics = q1.fit_plate(t_obs, y_obs, fit_radiation=False)
     print(f"标定完成 RMSE={metrics['rmse']:.4f} °C")
     return plate
 
 
-# ---------------------------------------------------------------------------
-# 主程序
-# ---------------------------------------------------------------------------
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -306,7 +264,8 @@ def main() -> None:
     plate = load_or_calibrate_plate()
     print(
         f"参数: eta_pre={plate.eta_pre:.4f}, soak={plate.eta_soak:.4f}, "
-        f"ref={plate.eta_ref:.4f}, cool={plate.eta_cool:.4f}"
+        f"ref={plate.eta_ref:.4f}, cool10={plate.eta_cool:.4f}, "
+        f"cool11={plate.eta_cool_late:.4f}"
     )
 
     print(f"\n[1] 稀疏扫描 (步长 1 cm/min, dt={DT_REPORT})...")
@@ -358,7 +317,6 @@ def main() -> None:
     print(f"  最小裕量     = {ev['min_margin']:.4f}")
     print(f"  接近有效约束 = {active if active else '（均有余量，可能顶到 100）'}")
 
-    # 边界两侧验证
     print("\n[4] 边界两侧验证 (±0.01):")
     for dv in (-0.01, 0.0, 0.01):
         vv = min(V_MAX, max(V_MIN, round(v_max + dv, 10)))
@@ -368,7 +326,6 @@ def main() -> None:
             f"Tmax={e['T_peak']:.4f}, tau217={e['tau_217']}, Gmin={e['min_margin']:.4f}"
         )
 
-    # 指标—速度图
     fig, axes = plt.subplots(3, 2, figsize=(11, 9))
     vv = scan_df["v"].to_numpy()
     axes[0, 0].plot(vv, scan_df["T_peak"], "-o", ms=3)
@@ -417,7 +374,6 @@ def main() -> None:
     fig.savefig(FIG_DIR / "metrics_vs_speed.png", dpi=150)
     plt.close(fig)
 
-    # 最大速度炉温曲线
     fig, ax = plt.subplots(figsize=(10, 4.5))
     ax.plot(detail["curve_t"], detail["curve_T"], label=f"v={v_max:.2f} cm/min")
     ax.axhline(217, color="orange", ls="--", lw=0.8)
@@ -432,7 +388,6 @@ def main() -> None:
     fig.savefig(FIG_DIR / "profile_at_vmax.png", dpi=150)
     plt.close(fig)
 
-    # 指标表
     table = pd.DataFrame(
         [
             {
@@ -504,7 +459,9 @@ def main() -> None:
             "eta_soak": plate.eta_soak,
             "eta_ref": plate.eta_ref,
             "eta_cool": plate.eta_cool,
+            "eta_cool_late": plate.eta_cool_late,
             "eta_r": plate.eta_r,
+            "alpha": plate.alpha,
         },
     }
     (OUT_DIR / "summary.json").write_text(

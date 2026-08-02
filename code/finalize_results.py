@@ -183,6 +183,7 @@ def unify_q3(plate: q1.PlateParams, seed: int = 2020) -> q3.EvalResult:
             "eta_soak": plate.eta_soak,
             "eta_ref": plate.eta_ref,
             "eta_cool": plate.eta_cool,
+            "eta_cool_late": plate.eta_cool_late,
             "eta_r": plate.eta_r,
             "alpha": plate.alpha,
         },
@@ -294,12 +295,13 @@ def run_sensitivity(plate: q1.PlateParams, y3: np.ndarray, y4: np.ndarray | None
     print("[C] 参数敏感性 ±5%")
     print("=" * 60)
     OUT_VER.mkdir(parents=True, exist_ok=True)
-    names = ["eta_pre", "eta_soak", "eta_ref", "eta_cool"]
+    names = ["eta_pre", "eta_soak", "eta_ref", "eta_cool", "eta_cool_late"]
     base = {
         "eta_pre": plate.eta_pre,
         "eta_soak": plate.eta_soak,
         "eta_ref": plate.eta_ref,
         "eta_cool": plate.eta_cool,
+        "eta_cool_late": plate.eta_cool_late,
         "eta_r": plate.eta_r,
         "alpha": plate.alpha,
     }
@@ -740,7 +742,8 @@ def main() -> None:
     plate = q3.load_plate()
     print(
         f"标定参数: pre={plate.eta_pre:.4f}, soak={plate.eta_soak:.4f}, "
-        f"ref={plate.eta_ref:.4f}, cool={plate.eta_cool:.4f}"
+        f"ref={plate.eta_ref:.4f}, cool10={plate.eta_cool:.4f}, "
+        f"cool11={plate.eta_cool_late:.4f}"
     )
     print(f"官方报告网格 dt={DT_REPORT}")
 

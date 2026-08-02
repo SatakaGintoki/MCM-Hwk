@@ -1,20 +1,4 @@
-"""
-问题三：最小阴影面积（单文件版）
-
-流程：
-1. 继承问题一标定参数（冻结，不重拟合）
-2. 五维决策变量 y=(S1-5, S6, S7, S8-9, v)，归一化到 z∈[0,1]^5
-3. 目标：升温侧 ∫(T-217) dt，自首次上穿 217°C 到峰值
-4. 约束：与问题二相同的十项制程界限（Deb 可行性规则）
-5. 主算法：约束差分进化（CDE）+ 多起点 COBYLA 精修
-6. 对照：实数 GA、收缩因子 PSO（同预算，可再接 COBYLA）
-
-运行：
-  python code/q3.py              # 默认实用预算
-  python code/q3.py --full       # 接近笔记中的较大预算
-  python code/q3.py --fast       # 快速冒烟
-  python code/q3.py --no-compare # 只跑 CDE+COBYLA
-"""
+"""问题三：在工艺约束下最小化升温侧超温面积。"""
 from __future__ import annotations
 
 import argparse
@@ -40,23 +24,17 @@ ROOT = q1.ROOT
 OUT_DIR = ROOT / "results" / "q3"
 FIG_DIR = ROOT / "figures" / "q3"
 
-# 决策变量边界：S1-5, S6, S7, S8-9, v
 L_BOUNDS = np.array([165.0, 185.0, 225.0, 245.0, 65.0])
 U_BOUNDS = np.array([185.0, 205.0, 245.0, 265.0, 100.0])
 DIM = 5
 VAR_NAMES = ["S1_5", "S6", "S7", "S8_9", "v"]
 
-# 约束尺度（笔记 §9.6）
 CONSTRAINT_SCALE = np.array([3.0, 3.0, 3.0, 3.0, 60.0, 60.0, 50.0, 50.0, 10.0, 10.0])
 SLOPE_UP_TOL = 1e-3
 
-# 问题二可行工艺种子
-SEED_Q2 = np.array([182.0, 203.0, 237.0, 254.0, 85.58])
+SEED_Q2 = np.array([182.0, 203.0, 237.0, 254.0, 79.60])
 
 
-# ---------------------------------------------------------------------------
-# 编码 / 环境仿真
-# ---------------------------------------------------------------------------
 def encode(y: np.ndarray) -> np.ndarray:
     return (np.asarray(y, dtype=float) - L_BOUNDS) / (U_BOUNDS - L_BOUNDS)
 
@@ -72,7 +50,7 @@ def expand_setpoints(y: np.ndarray) -> np.ndarray:
 
 
 def reflect_bounds(z: np.ndarray) -> np.ndarray:
-    """反射修复到 [0,1]，再截断。"""
+    """Reflect trial coordinates into the unit cube."""
     z = np.asarray(z, dtype=float).copy()
     for j in range(z.size):
         while z[j] < 0.0 or z[j] > 1.0:
@@ -91,7 +69,7 @@ def simulate_plate_fast(
     dt: float = 0.5,
     n_nodes: int = 11,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """与 q1.simulate_plate 同模型，但一次预计算 C(x(t)) 以加速优化调用。"""
+    """Evaluate the calibrated model with a precomputed ambient field."""
     S = q1._as_setpoints(setpoints)
     v = u_cm_per_min / 60.0
     t_end = q1.FURNACE_LEN / v
@@ -153,9 +131,6 @@ def simulate_plate_fast(
     return t, T_center
 
 
-# ---------------------------------------------------------------------------
-# 评价：面积 + 约束
-# ---------------------------------------------------------------------------
 def _cross_time(t: np.ndarray, T: np.ndarray, level: float, rising: bool) -> float:
     if rising:
         idx = np.where((T[:-1] < level) & (T[1:] >= level))[0]
@@ -168,13 +143,12 @@ def _cross_time(t: np.ndarray, T: np.ndarray, level: float, rising: bool) -> flo
 
 
 def shadow_area(t: np.ndarray, T: np.ndarray, t217_up: float, t_peak: float) -> float:
-    """A = ∫_{t217}^{tp} (T-217) dt，端点线性插值后梯形积分。"""
+    """Integrate superheat from the liquidus crossing to the peak."""
     if not (np.isfinite(t217_up) and np.isfinite(t_peak)) or t_peak <= t217_up:
         return float("nan")
     mask = (t >= t217_up) & (t <= t_peak)
     tt = t[mask]
     TT = T[mask]
-    # 插入精确端点
     T217 = 217.0
     T_left = float(np.interp(t217_up, t, T))
     T_right = float(np.interp(t_peak, t, T))
@@ -200,7 +174,7 @@ class EvalResult:
     V: float
     feasible: bool
     metrics: dict
-    constraints: np.ndarray  # c_j <= 0 形式
+    constraints: np.ndarray
     margins: dict
     t: np.ndarray | None = None
     T: np.ndarray | None = None
@@ -275,7 +249,6 @@ def evaluate_y(
         "g9_peak_lo": T_peak - 240.0,
         "g10_peak_hi": 250.0 - T_peak,
     }
-    # c_j = -margin_j  （c<=0 等价 margin>=0）
     c = np.array([-margins[k] for k in margins], dtype=float)
     V = float(np.sum(np.maximum(0.0, c / CONSTRAINT_SCALE)))
     feasible = bool(np.all(c <= 0.0) and np.isfinite(A))
@@ -331,9 +304,6 @@ def deb_better(a: EvalResult, b: EvalResult) -> bool:
     return a.V < b.V
 
 
-# ---------------------------------------------------------------------------
-# 初始种群
-# ---------------------------------------------------------------------------
 def init_population(npop: int, rng: np.random.Generator, include_q2_seed: bool = True) -> np.ndarray:
     sampler = LatinHypercube(d=DIM, seed=int(rng.integers(0, 2**31 - 1)))
     pop = sampler.random(n=npop)
@@ -342,9 +312,6 @@ def init_population(npop: int, rng: np.random.Generator, include_q2_seed: bool =
     return pop
 
 
-# ---------------------------------------------------------------------------
-# CDE / GA / PSO
-# ---------------------------------------------------------------------------
 @dataclass
 class SearchHistory:
     evals: list[int] = field(default_factory=list)
@@ -456,7 +423,6 @@ def run_ga(
     pop_z = init_population(npop, rng)
     pop = [evaluate_z(z, plate, counter=counter, dt=dt) for z in pop_z]
     best = min(pop, key=lambda e: (0 if e.feasible else 1, e.A if e.feasible else e.V))
-    # 用 Deb 找真正最优
     best = pop[0]
     for ind in pop[1:]:
         if deb_better(ind, best):
@@ -466,7 +432,6 @@ def run_ga(
     while counter.n < max_eval:
         new_z: list[np.ndarray] = []
         new_pop: list[EvalResult] = []
-        # 精英保留
         elite_idx = 0
         for i in range(1, npop):
             if deb_better(pop[i], pop[elite_idx]):
@@ -498,7 +463,6 @@ def run_ga(
                 best = child2
             _record(hist, counter, best)
 
-        # 填满种群（若预算耗尽则截断）
         while len(new_pop) < npop:
             new_pop.append(pop[len(new_pop) % len(pop)])
             new_z.append(new_pop[-1].z.copy())
@@ -555,9 +519,6 @@ def run_pso(
     return gbest, pbest, hist
 
 
-# ---------------------------------------------------------------------------
-# COBYLA 局部精修
-# ---------------------------------------------------------------------------
 def select_elites(pop: list[EvalResult], n: int = 3, min_dist: float = 0.05) -> list[EvalResult]:
     feas = [e for e in pop if e.feasible]
     feas.sort(key=lambda e: e.A)
@@ -567,11 +528,8 @@ def select_elites(pop: list[EvalResult], n: int = 3, min_dist: float = 0.05) -> 
             elites.append(e)
         if len(elites) >= n:
             break
-    # 不够则按面积补
     if len(elites) < n:
         for e in feas:
-            # EvalResult 含 numpy 数组，dataclass 的 == 会产生布尔数组，
-            # 不能直接用于 list membership；这里按对象身份去重。
             if all(e is not chosen for chosen in elites):
                 elites.append(e)
             if len(elites) >= n:
@@ -648,7 +606,6 @@ def multi_start_cobyla(
 ) -> EvalResult:
     elites = select_elites(pop, n=n_elites)
     if not elites:
-        # 无可行走，对违反量最小者精修
         worst = sorted(pop, key=lambda e: e.V)[:n_elites]
         elites = worst
     best = elites[0]
@@ -659,9 +616,6 @@ def multi_start_cobyla(
     return best
 
 
-# ---------------------------------------------------------------------------
-# 参数加载与输出
-# ---------------------------------------------------------------------------
 def load_plate() -> q1.PlateParams:
     summary_path = ROOT / "results" / "q1" / "summary.json"
     if summary_path.exists():
@@ -673,12 +627,13 @@ def load_plate() -> q1.PlateParams:
             eta_soak=p["eta_soak"],
             eta_ref=p["eta_ref"],
             eta_cool=p["eta_cool"],
+            eta_cool_late=p.get("eta_cool_late", p["eta_cool"]),
             eta_r=p.get("eta_r", 0.0),
             alpha=p.get("alpha", q1.ALPHA_FIXED),
         )
     print("未找到 q1 summary，现场标定...")
     t_obs, y_obs = q1.load_calibration_data()
-    plate, metrics = q1.fit_plate(t_obs, y_obs, fit_radiation=True)
+    plate, metrics = q1.fit_plate(t_obs, y_obs, fit_radiation=False)
     print(f"标定完成 RMSE={metrics['rmse']:.4f} °C")
     return plate
 
@@ -696,7 +651,6 @@ def result_to_dict(ev: EvalResult) -> dict:
         },
         "margins": {k: float(v) for k, v in ev.margins.items()},
         "at_bound": {
-            # 温度 0.05°C / 速度 0.05 cm/min 内视为触及边界（避免 1e-6 漏判贴边解）
             n: bool(
                 abs(ev.y[i] - L_BOUNDS[i]) < (0.05 if i < 4 else 0.05)
                 or abs(ev.y[i] - U_BOUNDS[i]) < (0.05 if i < 4 else 0.05)
@@ -787,9 +741,6 @@ def neighborhood_check(ev: EvalResult, plate: q1.PlateParams, dt: float) -> list
     return rows
 
 
-# ---------------------------------------------------------------------------
-# 主程序
-# ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="问题三：最小阴影面积优化")
     p.add_argument("--fast", action="store_true", help="快速冒烟（小种群/少评价）")
@@ -801,11 +752,19 @@ def parse_args() -> argparse.Namespace:
 
 def budget_from_args(args: argparse.Namespace) -> dict:
     if args.fast:
-        return dict(npop=20, max_eval=400, dt_search=0.5, dt_verify=0.1, elites=2, cobyla_maxfun=40)
+        return dict(
+            npop=20, max_eval=400, dt_search=0.5, dt_refine=0.1,
+            dt_verify=0.05, elites=2, cobyla_maxfun=40,
+        )
     if args.full:
-        return dict(npop=75, max_eval=8000, dt_search=0.5, dt_verify=0.1, elites=5, cobyla_maxfun=100)
-    # 默认：约数分钟～十几分钟量级
-    return dict(npop=40, max_eval=2000, dt_search=0.5, dt_verify=0.1, elites=3, cobyla_maxfun=80)
+        return dict(
+            npop=75, max_eval=8000, dt_search=0.1, dt_refine=0.05,
+            dt_verify=0.025, elites=5, cobyla_maxfun=100,
+        )
+    return dict(
+        npop=36, max_eval=1500, dt_search=0.1, dt_refine=0.05,
+        dt_verify=0.025, elites=5, cobyla_maxfun=80,
+    )
 
 
 def main() -> None:
@@ -822,14 +781,14 @@ def main() -> None:
     plate = load_plate()
     print(
         f"参数: eta_pre={plate.eta_pre:.4f}, soak={plate.eta_soak:.4f}, "
-        f"ref={plate.eta_ref:.4f}, cool={plate.eta_cool:.4f}"
+        f"ref={plate.eta_ref:.4f}, cool10={plate.eta_cool:.4f}, "
+        f"cool11={plate.eta_cool_late:.4f}"
     )
 
     rng = np.random.default_rng(args.seed)
     histories: dict[str, SearchHistory] = {}
     algo_rows = []
 
-    # ---- CDE ----
     print("\n[1] 约束差分进化 CDE ...")
     t0 = time.perf_counter()
     best_cde, pop_cde, hist_cde = run_cde(
@@ -860,7 +819,6 @@ def main() -> None:
         }
     )
 
-    # ---- GA / PSO 对照 ----
     if not args.no_compare:
         print("\n[3] GA 对照（同预算）...")
         rng_ga = np.random.default_rng(args.seed + 1)
@@ -914,7 +872,6 @@ def main() -> None:
             }
         )
 
-    # 取全局最优（优先 CDE，否则三者最优）
     candidates = [best_cde]
     if not args.no_compare:
         candidates.extend([best_ga, best_pso])
@@ -923,30 +880,52 @@ def main() -> None:
         if deb_better(c, best):
             best = c
 
-    print("\n[5] 高精度复算 (dt=0.1) ...")
-    best_hi = evaluate_y(best.y, plate, dt=cfg["dt_verify"], keep_curve=True)
+    coarse_pool = list(pop_cde) + candidates
+    if not args.no_compare:
+        coarse_pool.extend(pop_ga)
+        coarse_pool.extend(pop_pso)
+
+    print(f"\n[5] 中网格精修 (dt={cfg['dt_refine']}) ...")
+    coarse_elites = select_elites(
+        coarse_pool, n=max(cfg["elites"] * 2, 4), min_dist=0.02
+    )
+    mid_pool = [evaluate_y(e.y, plate, dt=cfg["dt_refine"]) for e in coarse_elites]
+    mid_pool.extend(evaluate_y(c.y, plate, dt=cfg["dt_refine"]) for c in candidates)
+    best_mid = multi_start_cobyla(
+        mid_pool,
+        plate,
+        dt=cfg["dt_refine"],
+        n_elites=cfg["elites"],
+        maxfun=cfg["cobyla_maxfun"],
+    )
+    print(f"  中网格: feas={best_mid.feasible}, A={best_mid.A:.6f}")
+
+    print(f"[6] 官方网格精修 (dt={cfg['dt_verify']}) ...")
+    mid_elites = select_elites(
+        mid_pool + [best_mid], n=max(cfg["elites"], 3), min_dist=0.01
+    )
+    hi_pool = [evaluate_y(e.y, plate, dt=cfg["dt_verify"]) for e in mid_elites]
+    hi_pool.append(evaluate_y(best_mid.y, plate, dt=cfg["dt_verify"]))
+    best_hi = multi_start_cobyla(
+        hi_pool,
+        plate,
+        dt=cfg["dt_verify"],
+        n_elites=cfg["elites"],
+        maxfun=cfg["cobyla_maxfun"],
+    )
+    best_hi = evaluate_y(best_hi.y, plate, dt=cfg["dt_verify"], keep_curve=True)
     print(
-        f"  高精度: feas={best_hi.feasible}, A={best_hi.A:.6f}, "
+        f"  官方网格: feas={best_hi.feasible}, A={best_hi.A:.6f}, "
         f"Tpeak={best_hi.metrics['T_peak']:.4f}, "
         f"tau150={best_hi.metrics['tau_150_190']}, tau217={best_hi.metrics['tau_217']}"
     )
     if not best_hi.feasible:
-        print("  警告：高精度下不可行，回退到搜索网格最优可行解复算")
-        # 在候选里找高精度仍可行的
-        recovered = None
-        for c in candidates:
-            eh = evaluate_y(c.y, plate, dt=cfg["dt_verify"], keep_curve=True)
-            if eh.feasible and (recovered is None or eh.A < recovered.A):
-                recovered = eh
-        if recovered is not None:
-            best_hi = recovered
-            print(f"  已恢复可行解 A={best_hi.A:.6f}")
+        raise RuntimeError("三级网格精修后仍未得到官方报告网格上的可行解")
 
-    print("\n[6] 邻域检查 ...")
+    print("\n[7] 邻域检查 ...")
     neigh = neighborhood_check(best_hi, plate, dt=cfg["dt_verify"])
     pd.DataFrame(neigh).to_csv(OUT_DIR / "neighborhood.csv", index=False, encoding="utf-8-sig")
 
-    # 保存曲线
     assert best_hi.t is not None and best_hi.T is not None
     pd.DataFrame({"t": best_hi.t, "T": best_hi.T}).to_csv(
         OUT_DIR / "best_curve.csv", index=False, encoding="utf-8-sig"
@@ -963,6 +942,7 @@ def main() -> None:
             "eta_soak": plate.eta_soak,
             "eta_ref": plate.eta_ref,
             "eta_cool": plate.eta_cool,
+            "eta_cool_late": plate.eta_cool_late,
             "eta_r": plate.eta_r,
             "alpha": plate.alpha,
         },

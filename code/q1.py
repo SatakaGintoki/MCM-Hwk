@@ -1,13 +1,4 @@
-"""
-问题一：炉温曲线（单文件版）
-
-流程：
-1. 用附件实验工况（70 cm/min + 实验温区）标定传热参数
-2. 冻结参数，代入问题一工况（78 cm/min + 新温区）预测
-3. 输出指定位置温度、result.csv、拟合图
-
-运行：python code/q1.py
-"""
+"""问题一：标定传热参数并预测炉温曲线。"""
 from __future__ import annotations
 
 import json
@@ -21,9 +12,6 @@ import pandas as pd
 from numpy.typing import ArrayLike
 from scipy.optimize import least_squares
 
-# ---------------------------------------------------------------------------
-# 路径与常数
-# ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "results" / "q1"
 FIG_DIR = ROOT / "figures" / "q1"
@@ -32,23 +20,18 @@ FRONT_LEN = 25.0
 ZONE_LEN = 30.5
 GAP_LEN = 5.0
 N_ZONES = 11
-FURNACE_LEN = FRONT_LEN + N_ZONES * ZONE_LEN + (N_ZONES - 1) * GAP_LEN + FRONT_LEN  # 435.5
+FURNACE_LEN = FRONT_LEN + N_ZONES * ZONE_LEN + (N_ZONES - 1) * GAP_LEN + FRONT_LEN
 
 THICKNESS_M = 1.5e-4
 HALF_THICKNESS = THICKNESS_M / 2.0
-ALPHA_FIXED = 1.5e-7  # m^2/s，笔记 5.6：固定不拟合
-# 官方报告时间步长（与问题三/四 dt_verify 一致）
+ALPHA_FIXED = 1.5e-7
 DT_REPORT = 0.025
-DT_CALIB = 0.1  # 标定可用稍粗网格；最终预测与 result.csv 用 DT_REPORT
+DT_CALIB = 0.1
 
-# 标定 / 问题一温区设定
 SETPOINTS_CAL = np.array([175, 175, 175, 175, 175, 195, 235, 255, 255, 25, 25], dtype=float)
 SETPOINTS_Q1 = np.array([173, 173, 173, 173, 173, 198, 230, 257, 257, 25, 25], dtype=float)
 
 
-# ---------------------------------------------------------------------------
-# 炉体几何与环境温度场 C(x)
-# ---------------------------------------------------------------------------
 def zone_interval(i: int) -> tuple[float, float]:
     """第 i 个小温区 [a_i, b_i]，i = 1..11，单位 cm。"""
     a = FRONT_LEN + (i - 1) * (ZONE_LEN + GAP_LEN)
@@ -62,7 +45,10 @@ def zone_midpoint(i: int) -> float:
 
 X_SOAK = zone_interval(6)[0]
 X_REFLOW = zone_interval(7)[0]
-X_COOL = zone_interval(9)[1]  # 冷却换热从温区 9 出口开始（含降温间隙）
+X_COOL = zone_interval(9)[1]
+X_COOL_LATE = zone_interval(10)[1]
+FRONT_TRANSITION_END = zone_interval(1)[1]
+COOL_GAP_TRANSITION_WIDTH = 0.5
 
 Q1_PROBE_X = {
     "zone3_mid": zone_midpoint(3),
@@ -72,8 +58,14 @@ Q1_PROBE_X = {
 }
 
 
-def ambient_temperature(x: float | np.ndarray, setpoints: Sequence[float]) -> float | np.ndarray:
-    """分段稳态环境温度：炉前线性、温区恒温、间隙线性、炉后 25°C。"""
+def _smoothstep01(s: float | np.ndarray) -> float | np.ndarray:
+    s_arr = np.clip(np.asarray(s, dtype=float), 0.0, 1.0)
+    out = 3.0 * s_arr**2 - 2.0 * s_arr**3
+    return float(out) if out.ndim == 0 else out
+
+
+def ambient_temperature_linear(x: float | np.ndarray, setpoints: Sequence[float]) -> float | np.ndarray:
+    """Piecewise-linear reference ambient field."""
     S = np.asarray(setpoints, dtype=float)
     if S.shape != (11,):
         raise ValueError("setpoints must have length 11")
@@ -110,8 +102,37 @@ def ambient_temperature(x: float | np.ndarray, setpoints: Sequence[float]) -> fl
     return float(C[0]) if scalar else C
 
 
+def ambient_temperature(x: float | np.ndarray, setpoints: Sequence[float]) -> float | np.ndarray:
+    """Equivalent ambient field with smooth inlet and cooling transitions."""
+    S = np.asarray(setpoints, dtype=float)
+    if S.shape != (11,):
+        raise ValueError("setpoints must have length 11")
+    x_arr = np.asarray(x, dtype=float)
+    scalar = x_arr.ndim == 0
+    xx = np.atleast_1d(x_arr)
+    C = np.asarray(ambient_temperature_linear(xx, S), dtype=float)
+
+    m_front = (xx >= 0.0) & (xx < FRONT_TRANSITION_END)
+    if np.any(m_front):
+        s = xx[m_front] / FRONT_TRANSITION_END
+        C[m_front] = 25.0 + (S[0] - 25.0) * np.asarray(_smoothstep01(s))
+
+    x_hot = zone_interval(9)[1]
+    x_cold = zone_interval(10)[0]
+    x_start = x_cold - COOL_GAP_TRANSITION_WIDTH
+    m_hot = (xx > x_hot) & (xx <= x_start)
+    C[m_hot] = S[8]
+    m_drop = (xx > x_start) & (xx < x_cold)
+    if np.any(m_drop):
+        s = (xx[m_drop] - x_start) / COOL_GAP_TRANSITION_WIDTH
+        H = np.asarray(_smoothstep01(s))
+        C[m_drop] = S[8] + (S[9] - S[8]) * H
+
+    return float(C[0]) if scalar else C
+
+
 def segment_of(x: float) -> str:
-    """四段换热：pre / soak / ref / cool。"""
+    """返回四个基础区段；第二冷却阶段由参数类在 X_COOL_LATE 处分流。"""
     if x >= X_COOL:
         return "cool"
     if x >= X_REFLOW:
@@ -121,9 +142,6 @@ def segment_of(x: float) -> str:
     return "pre"
 
 
-# ---------------------------------------------------------------------------
-# 求解器：M1 集中参数 / M2 一维热传导
-# ---------------------------------------------------------------------------
 def thomas_solve(lower: np.ndarray, diag: np.ndarray, upper: np.ndarray, rhs: np.ndarray) -> np.ndarray:
     n = diag.size
     a, b, c, d = lower.copy(), diag.copy(), upper.copy(), rhs.copy()
@@ -144,9 +162,12 @@ class LumpedParams:
     k_soak: float
     k_ref: float
     k_cool: float
+    k_cool_late: float | None = None
 
     def k_at(self, x: float) -> float:
         seg = segment_of(x)
+        if x >= X_COOL_LATE:
+            return self.k_cool if self.k_cool_late is None else self.k_cool_late
         return {"cool": self.k_cool, "ref": self.k_ref, "soak": self.k_soak}.get(seg, self.k_pre)
 
 
@@ -156,10 +177,13 @@ class PlateParams:
     eta_soak: float
     eta_ref: float
     eta_cool: float
+    eta_cool_late: float | None = None
     eta_r: float = 0.0
     alpha: float = ALPHA_FIXED
 
     def eta_at(self, x: float) -> float:
+        if x >= X_COOL_LATE:
+            return self.eta_cool if self.eta_cool_late is None else self.eta_cool_late
         seg = segment_of(x)
         return {
             "cool": self.eta_cool,
@@ -182,7 +206,7 @@ def simulate_lumped(
     t_end: float | None = None,
     dt: float = 0.1,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """M1：dT/dt = k(x)(C - T)，RK4。"""
+    """Solve the lumped model by fourth-order Runge--Kutta."""
     S = _as_setpoints(setpoints)
     v = u_cm_per_min / 60.0
     if t_end is None:
@@ -214,7 +238,7 @@ def simulate_plate(
     dt: float = 0.1,
     n_nodes: int = 11,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """M2：半厚度隐式 Euler + 对流/辐射边界，返回中心温度。"""
+    """Solve the half-thickness implicit heat-conduction model."""
     S = _as_setpoints(setpoints)
     v = u_cm_per_min / 60.0
     if t_end is None:
@@ -255,7 +279,7 @@ def simulate_plate(
         rhs = u.copy()
         rhs[M] = eta_eff * C
 
-        for _ in range(2):  # Picard 更新辐射线性化
+        for _ in range(2):
             u_new = thomas_solve(lower, diag, upper, rhs)
             Ts = u_new[-1]
             Tsk = Ts + 273.15
@@ -281,9 +305,6 @@ def interpolate_temperature(t: np.ndarray, T: np.ndarray, t_query: ArrayLike) ->
     return np.interp(np.asarray(t_query, dtype=float), t, T)
 
 
-# ---------------------------------------------------------------------------
-# 附件标定
-# ---------------------------------------------------------------------------
 def load_calibration_data() -> tuple[np.ndarray, np.ndarray]:
     path = next(ROOT.glob("*.xlsx"))
     df = pd.read_excel(path)
@@ -303,11 +324,11 @@ def fit_lumped(t_obs: np.ndarray, y_obs: np.ndarray, u: float = 70.0) -> tuple[L
         return interpolate_temperature(t, T, t_obs) - y_obs
 
     starts = [
-        np.array([0.012, 0.018, 0.030, 0.004]),
-        np.array([0.008, 0.015, 0.040, 0.003]),
-        np.array([0.015, 0.020, 0.025, 0.006]),
+        np.array([0.020, 0.016, 0.023, 0.0034, 0.0100]),
+        np.array([0.015, 0.020, 0.030, 0.0020, 0.0150]),
+        np.array([0.025, 0.015, 0.020, 0.0060, 0.0080]),
     ]
-    bounds = ([1e-4] * 4, [0.5] * 4)
+    bounds = ([1e-4] * 5, [0.5] * 5)
     best = None
     for x0 in starts:
         res = least_squares(residuals, x0, bounds=bounds, method="trf", verbose=0)
@@ -332,8 +353,8 @@ def fit_plate(
 
     def pack(theta: np.ndarray) -> PlateParams:
         if fit_radiation:
-            return PlateParams(*map(float, theta[:4]), eta_r=float(theta[4]))
-        return PlateParams(*map(float, theta[:4]), eta_r=0.0)
+            return PlateParams(*map(float, theta[:5]), eta_r=float(theta[5]))
+        return PlateParams(*map(float, theta[:5]), eta_r=0.0)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
         t, T = simulate_plate(SETPOINTS_CAL, u, pack(theta), t_end=t_end, dt=0.1)
@@ -341,14 +362,21 @@ def fit_plate(
 
     if fit_radiation:
         starts = [
-            np.array([6.0, 10.0, 18.0, 2.0, 1e-12]),
-            np.array([4.0, 8.0, 25.0, 1.5, 1e-12]),
-            np.array([8.0, 12.0, 15.0, 3.0, 1e-11]),
+            np.array([10.0, 8.0, 12.0, 1.7, 5.0, 1e-12]),
+            np.array([7.0, 10.0, 18.0, 1.0, 8.0, 1e-12]),
+            np.array([13.0, 7.0, 10.0, 3.0, 4.0, 1e-11]),
         ]
-        bounds = ([0.1, 0.1, 0.1, 0.1, 0.0], [200.0, 200.0, 400.0, 100.0, 5e-7])
+        bounds = (
+            [0.1, 0.1, 0.1, 0.1, 0.1, 0.0],
+            [200.0, 200.0, 400.0, 100.0, 100.0, 5e-7],
+        )
     else:
-        starts = [np.array([6.0, 10.0, 18.0, 2.0]), np.array([4.0, 8.0, 25.0, 1.5])]
-        bounds = ([0.1] * 4, [200.0, 200.0, 400.0, 100.0])
+        starts = [
+            np.array([10.0, 8.0, 12.0, 1.7, 5.0]),
+            np.array([7.0, 10.0, 18.0, 1.0, 8.0]),
+            np.array([13.0, 7.0, 10.0, 3.0, 4.0]),
+        ]
+        bounds = ([0.1] * 5, [200.0, 200.0, 400.0, 100.0, 100.0])
 
     best = None
     for x0 in starts:
@@ -367,9 +395,6 @@ def fit_plate(
     }
 
 
-# ---------------------------------------------------------------------------
-# 工艺特征与主程序
-# ---------------------------------------------------------------------------
 def process_metrics(t: np.ndarray, T: np.ndarray) -> dict:
     dTdt = np.gradient(T, t)
     i_peak = int(np.argmax(T))
@@ -408,7 +433,6 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ----- 第一步：附件标定 -----
     print("=" * 60)
     print("第一步：用附件实验工况标定参数")
     print("  温区: 175/195/235/255/25 °C, 速度: 70 cm/min")
@@ -416,19 +440,21 @@ def main() -> None:
     t_obs, y_obs = load_calibration_data()
     print(f"观测点数: {len(t_obs)}, t ∈ [{t_obs[0]:.1f}, {t_obs[-1]:.1f}] s")
 
-    print("\n拟合 M1（四段换热）...")
+    print("\n拟合 M1（边界感知温度场 + 五段换热）...")
     lumped, m1 = fit_lumped(t_obs, y_obs)
     print(
         f"  k_pre={lumped.k_pre:.6f}, k_soak={lumped.k_soak:.6f}, "
-        f"k_ref={lumped.k_ref:.6f}, k_cool={lumped.k_cool:.6f}"
+        f"k_ref={lumped.k_ref:.6f}, k_cool10={lumped.k_cool:.6f}, "
+        f"k_cool11={lumped.k_cool_late:.6f}"
     )
     print(f"  RMSE={m1['rmse']:.4f} °C, MAE={m1['mae']:.4f} °C")
 
-    print("\n拟合 M2（主模型，四段换热+辐射）...")
-    plate, m2 = fit_plate(t_obs, y_obs, fit_radiation=True)
+    print("\n拟合 M2（主模型，边界感知温度场 + 五段等效换热）...")
+    plate, m2 = fit_plate(t_obs, y_obs, fit_radiation=False)
     print(
         f"  eta_pre={plate.eta_pre:.4f}, eta_soak={plate.eta_soak:.4f}, "
-        f"eta_ref={plate.eta_ref:.4f}, eta_cool={plate.eta_cool:.4f}"
+        f"eta_ref={plate.eta_ref:.4f}, eta_cool10={plate.eta_cool:.4f}, "
+        f"eta_cool11={plate.eta_cool_late:.4f}"
     )
     print(f"  eta_r={plate.eta_r:.6e}")
     print(f"  RMSE={m2['rmse']:.4f} °C, MAE={m2['mae']:.4f} °C")
@@ -459,7 +485,6 @@ def main() -> None:
     fig.savefig(FIG_DIR / "calibration_fit.png", dpi=150)
     plt.close(fig)
 
-    # ----- 第二步：问题一预测（参数冻结） -----
     print("\n" + "=" * 60)
     print("第二步：冻结标定参数，代入问题一工况预测")
     print("  温区: 173/198/230/257/25 °C, 速度: 78 cm/min")
@@ -487,7 +512,6 @@ def main() -> None:
         result_df.to_csv(ROOT / "result.csv", index=False, encoding="utf-8-sig")
         print(f"\n已写入 result.csv / result_q1.csv / results/q1/result.csv ，共 {len(t_out)} 行")
     except PermissionError:
-        # Windows 下若 Excel 锁住 result.csv，至少保证备份文件完整
         print(f"\nresult.csv 被占用，已写入 result_q1.csv 与 results/q1/result.csv（共 {len(t_out)} 行）")
         print("请关闭 Excel 后手动复制 results/q1/result.csv → 根目录 result.csv")
 
@@ -522,12 +546,14 @@ def main() -> None:
             "k_soak": lumped.k_soak,
             "k_ref": lumped.k_ref,
             "k_cool": lumped.k_cool,
+            "k_cool_late": lumped.k_cool_late,
         },
         "plate_params": {
             "eta_pre": plate.eta_pre,
             "eta_soak": plate.eta_soak,
             "eta_ref": plate.eta_ref,
             "eta_cool": plate.eta_cool,
+            "eta_cool_late": plate.eta_cool_late,
             "eta_r": plate.eta_r,
             "alpha": plate.alpha,
         },

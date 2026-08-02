@@ -1,0 +1,216 @@
+\section{炉温曲线基础模型与问题一求解}
+
+\subsection{炉体几何与运动关系}
+
+炉体由炉前区、11 个小温区、10 个间隙和炉后区依次组成，总长为
+
+\begin{equation}
+  L=25+11\times30.5+10\times5+25=435.5\ \mathrm{cm}.
+  \label{eq:len}
+\end{equation}
+
+第 $i$ 个小温区的起止位置为
+
+\begin{equation}
+  a_i=25+(i-1)(30.5+5),\qquad b_i=a_i+30.5,
+  \quad i=1,\ldots,11.
+\end{equation}
+
+传送带匀速时，焊接区域的位置为 $x(t)=vt/60$。因此温区结构先在空间坐标 $x$ 下描述，再由该式转化为焊点随时间经历的外部热环境。图 \ref{fig:furnace} 同时给出炉体结构和标定工况下的等效环境温度场。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\textwidth]{paper/furnace_ambient.pdf}
+  \caption{炉体结构及等效环境温度场示意}
+  \label{fig:furnace}
+\end{figure}
+
+\subsection{等效环境温度场}
+\label{sec:amb}
+
+设 $C(x)$ 为焊接区域在位置 $x$ 处所感受到的等效环境温度。它不是焊点中心温度，而是后续传热方程的外部边界条件。受控温区、普通间隙和炉体两端的形成机理不同，需要分别处理。
+
+\subsubsection{受控温区与普通间隙}
+
+远离炉口和冷却入口时，第 $i$ 个受控温区内取 $C(x)=S_i$。相邻温区之间的 $5\,$cm 间隙没有独立热源；炉体稳定运行后，间隙内温度由两侧温区传热共同决定。在忽略横向散热且等效导热系数不变的一维近似下，间隙满足
+
+\begin{equation}
+  \frac{\mathrm d^2C}{\mathrm dx^2}=0.
+\end{equation}
+
+结合两端条件 $C(b_i)=S_i$、$C(a_{i+1})=S_{i+1}$，得到
+
+\begin{equation}
+  C(x)=S_i+\frac{S_{i+1}-S_i}{5}(x-b_i),
+  \qquad b_i<x<a_{i+1}.
+  \label{eq:gap}
+\end{equation}
+
+可见，间隙采用线性连接并非任意插值，而是无内热源稳态一维导热方程的解。这里也不应把间隙温度设为 $25\,\dC$：$25\,\dC$ 是车间温度和电路板初温，内部间隙在稳定炉膛内会持续受到两侧热区影响。
+
+\subsubsection{炉口和冷却入口的边界影响}
+
+若令炉前 $25\,$cm 直接线性升至 $S_1$，模型在实验曲线前段产生明显高估。这说明冷空气侵入的影响延伸到了第 1 温区内部。将炉口至第 1 区出口 $b_1=55.5\,$cm 作为有效入口段，并取
+
+\begin{equation}
+  H(s)=3s^2-2s^3,\qquad
+  C(x)=25+(S_1-25)H\!\left(\frac{x}{b_1}\right),
+  \quad 0\le x<b_1.
+  \label{eq:front}
+\end{equation}
+
+$H(0)=0,H(1)=1$ 且 $H'(0)=H'(1)=0$，故入口温度及其梯度均连续。三次 Hermite 函数在此只承担边界连接作用，入口段长度则由炉体结构和残差比较确定；它并不是对焊点实测曲线的多项式拟合。
+
+第 9 区后进入冷却区。为避免在边界处使用不符合实际的数学阶跃，令高温气流延续到第 10 区入口前 $w=0.5\,$cm，并在该短区间内由 Hermite 函数降至 $25\,\dC$：
+
+\begin{equation}
+  C(x)=
+  \begin{cases}
+    S_9, & b_9<x\le a_{10}-w,\\
+    S_9+(25-S_9)H\!\left(\dfrac{x-a_{10}+w}{w}\right),
+      &a_{10}-w<x<a_{10},\\
+    25, &a_{10}\le x\le b_{11}.
+  \end{cases}
+  \label{eq:cool}
+\end{equation}
+
+对 $w=0.1\sim1.0\,$cm 的试算显示，RMSE 和峰值时刻的变化均很小，故取 $0.5\,$cm 作为有限宽度的代表值。式 \eqref{eq:gap}--\eqref{eq:cool} 与受控区常值共同组成连续的 $C(x)$。
+
+\subsection{焊接区域的瞬态传热模型}
+
+焊接区域厚度为 $\delta=0.15\,$mm，远小于沿炉膛方向的尺度。利用上下表面对称性，只计算中面到上表面的半厚度 $0\le z\le\delta/2$。一维非稳态导热方程为\cite{eftychiou1993}
+
+\begin{equation}
+  \frac{\partial T}{\partial t}
+  =\alpha\frac{\partial^2T}{\partial z^2},
+  \qquad 0<z<\frac{\delta}{2}.
+  \label{eq:pde}
+\end{equation}
+
+中面对称条件、初始条件和表面换热条件分别为
+
+\begin{equation}
+  \left.\frac{\partial T}{\partial z}\right|_{z=0}=0,
+  \qquad T(z,0)=25,
+  \qquad
+  \lambda\left.\frac{\partial T}{\partial z}\right|_{z=\delta/2}
+  =h_j\,[C(x(t))-T_s].
+  \label{eq:robin}
+\end{equation}
+
+式 \eqref{eq:robin} 表明，温区设定先形成外部温度 $C(x)$，再通过表面对流与辐射的综合换热使板面升温，最后由导热传到中心。这一过程自然产生炉温曲线相对环境温度场的滞后。模型中 $h_j$ 与导热系数 $\lambda$ 以组合形式出现，记
+
+\begin{equation}
+  \eta_j=\frac{h_j}{\lambda}.
+\end{equation}
+
+仅有一条中心温度曲线时，$h_j$、$\lambda$、热扩散率和辐射率无法同时稳定辨识。因此固定 $\alpha=1.5\times10^{-7}\,$m$^2$/s，把辐射贡献并入分段等效参数 $\eta_j$。回焊炉不同工艺区的换热条件存在显著差异，采用分区等效换热系数也与实测研究相符\cite{illes2010}。结合炉体工艺段和残差分布，将 $\eta$ 划分为表 \ref{tab:eta} 的五段。
+
+\begin{table}[htbp]
+  \centering
+  \caption{分段等效换热参数及辨识结果}
+  \label{tab:eta}
+  \small
+  \begin{tabular}{clcr}
+    \toprule
+    段 & 空间范围 & 参数 & 辨识值/m$^{-1}$ \\
+    \midrule
+    1 & 炉口至第 5 区出口 & $\eta_{\mathrm{pre}}$ & $9.4783$ \\
+    2 & 第 6 区 & $\eta_{\mathrm{soak}}$ & $7.4014$ \\
+    3 & 第 7 区至第 9 区出口 & $\eta_{\mathrm{ref}}$ & $11.0839$ \\
+    4 & 第 9 区出口至第 10 区出口 & $\eta_{\mathrm{cool,1}}$ & $1.6029$ \\
+    5 & 第 10 区出口以后 & $\eta_{\mathrm{cool,2}}$ & $4.7537$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{数值离散与参数辨识}
+
+厚度方向取 11 个等距节点，时间方向采用隐式 Euler 离散。记 $r=\alpha\Delta t/\Delta z^2$，内部节点满足
+
+\begin{equation}
+  -r u_{k-1}^{n+1}+(1+2r)u_k^{n+1}-r u_{k+1}^{n+1}=u_k^n.
+  \label{eq:implicit}
+\end{equation}
+
+中面条件用镜像节点处理，表面条件由一阶差分代入式 \eqref{eq:robin}。每个时间步均得到三对角线性方程组，采用 Thomas 追赶法求解\cite{patankar1980}。阈值温度的穿越时刻则在相邻时间节点间线性插值：
+
+\begin{equation}
+  t_{\mathrm{cross}}=t_k+
+  \frac{\Theta-T_k}{T_{k+1}-T_k}(t_{k+1}-t_k).
+  \label{eq:cross}
+\end{equation}
+
+用附件的 709 个观测点辨识五个 $\eta_j$，最小化目标为
+
+\begin{equation}
+  \min_{\bm\eta>0}\sum_{m=1}^{709}
+  \left[T_c(t_m;\bm\eta)-T_m^{\mathrm{obs}}\right]^2.
+  \label{eq:ls}
+\end{equation}
+
+采用有界信赖域反射算法并从三组初值出发。最终得到
+
+\begin{equation}
+  \mathrm{RMSE}=1.1197\,\dC,\qquad
+  \mathrm{MAE}=0.7167\,\dC,\qquad
+  \max|e|=4.0471\,\dC.
+\end{equation}
+
+图 \ref{fig:calib} 显示模型已消除基准模型在炉前和冷却后段的大范围系统偏差，但在回流和急冷转换附近仍存在局部结构性残差。这些局部误差提示等效温度场仍是炉内复杂流动的低维近似，后文将通过敏感性分析评估其影响。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\textwidth]{paper/calibration_fit.pdf}
+  \caption{标定工况下模型计算值、实测值及残差}
+  \label{fig:calib}
+\end{figure}
+
+为防止增加参数后只获得表面上的拟合改善，进一步用 Jacobian 条件数衡量可辨识性。表 \ref{tab:candidates} 给出主要候选结构。C4 相对于 C3 将 RMSE 从 $2.0699\,\dC$ 降至 $1.9308\,\dC$，但条件数增至 $2.8\times10^8$，参数对数据扰动极为敏感；定稿模型则在更低 RMSE 下仍保持良好条件数。因此模型选择依据是“预测误差与参数稳定性同时可接受”，而不是一味增加自由参数。
+
+\begin{table}[htbp]
+  \centering
+  \caption{主要候选模型的拟合与可辨识性比较}
+  \label{tab:candidates}
+  \small
+  \begin{tabular}{lcrr}
+    \toprule
+    模型结构 & RMSE/\dC & AIC & $\kappa(\bm J)$ \\
+    \midrule
+    炉前线性、单冷却段（C0） & $6.9535$ & $2757.8$ & $2.3\times10^1$ \\
+    加入口损失、双冷却段（C2） & $2.1930$ & $1125.5$ & $1.9\times10^5$ \\
+    再拆分炉前换热（C4） & $1.9308$ & $949.0$ & $2.8\times10^8$ \\
+    \textbf{Hermite 入口、五段换热（定稿）} & $\bm{1.1197}$ & $\bm{170.3}$ & $\bm{1.58\times10^1}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{问题一结果}
+
+辨识完成后固定表 \ref{tab:eta} 的参数，代入 $S_{1\text{-}5}=173\,\dC$、$S_6=198\,\dC$、$S_7=230\,\dC$、$S_{8\text{-}9}=257\,\dC$ 和 $v=78\,$cm/min。炉内总时间为 $335.0\,$s。四个指定位置由 $t=x/(v/60)$ 转换，对应中心温度见表 \ref{tab:q1probe}。
+
+\begin{table}[htbp]
+  \centering
+  \caption{问题一指定位置的焊接区域中心温度}
+  \label{tab:q1probe}
+  \small
+  \begin{tabular}{lrrr}
+    \toprule
+    位置 & $x$/cm & $t$/s & $T_c$/\dC \\
+    \midrule
+    小温区 3 中点 & $111.25$ & $85.5769$ & $\bm{131.15}$ \\
+    小温区 6 中点 & $217.75$ & $167.5000$ & $\bm{169.36}$ \\
+    小温区 7 中点 & $253.25$ & $194.8077$ & $\bm{189.28}$ \\
+    小温区 8 出口 & $304.00$ & $233.8462$ & $\bm{225.68}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+完整炉温曲线如图 \ref{fig:q1prof}。其峰值为 $240.6257\,\dC$，最大升温速率为 $2.0538\,\dC$/s，最小降温速率为 $-1.9897\,\dC$/s；升温时处于 $150\sim190\,\dC$ 的时间为 $79.95\,$s，高于 $217\,\dC$ 的时间为 $68.7193\,$s。五项指标均满足表 \ref{tab:limits}。按题目要求，每隔 $0.5\,$s 的 671 行结果写入 \texttt{result.csv}。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.84\textwidth]{paper/q1_profile.pdf}
+  \caption{问题一工况下的炉温曲线及四个指定位置}
+  \label{fig:q1prof}
+\end{figure}

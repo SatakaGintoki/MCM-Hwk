@@ -1,0 +1,36 @@
+\section{模型假设与符号说明}
+
+\subsection{模型假设}
+
+\begin{enumerate}[label=\textbf{H\arabic*.},leftmargin=3em,itemsep=2pt]
+  \item 回焊炉在电路板进入前已稳定运行，故等效环境温度只随位置变化，记为 $C(x)$。
+  \item 电路板匀速运动，位置与时间满足 $x(t)=vt/60$，其中 $v$ 的单位为 cm/min。
+  \item 焊接区域厚度远小于炉膛纵向尺度，忽略板面内的温差，只考虑厚度方向导热；上下表面换热条件相同，温度场关于中面对称。
+  \item 焊接区域的热物性在工作温度范围内视为常数，入炉时温度均为车间温度 $25\,\dC$。
+  \item 电路板对炉内温度场的反作用可忽略；对流和辐射的综合作用并入分段等效换热参数。
+  \item 受控温区内部的等效环境温度取设定值。普通间隙没有独立热源，其稳定温度由两侧温区共同决定，而不是重新回到车间温度 $25\,\dC$。
+\end{enumerate}
+
+最后一项区分了两个不同概念：$25\,\dC$ 是车间和进炉初始温度；炉内 $5\,$cm 间隙虽不控温，但在稳定运行时仍处在两侧热源形成的温度场中。只有题目明确规定的温区 10--11 才保持 $25\,\dC$。
+
+\subsection{主要符号}
+
+\begin{table}[htbp]
+  \centering
+  \caption{主要符号及含义}
+  \label{tab:symbols}
+  \small
+  \begin{tabularx}{\textwidth}{cYcY}
+    \toprule
+    符号 & 含义 & 符号 & 含义 \\
+    \midrule
+    $x,t$ & 炉内位置/cm，时间/s & $v$ & 传送速度/(cm/min) \\
+    $S_i$ & 第 $i$ 小温区设定温度/\dC & $C(x)$ & 等效环境温度/\dC \\
+    $T(z,t)$ & 焊接区域内部温度/\dC & $T_c,T_s$ & 中心温度、表面温度/\dC \\
+    $\delta$ & 焊接区域厚度，$0.15\,$mm & $\alpha$ & 热扩散率/(m$^2$/s) \\
+    $\eta_j$ & 第 $j$ 段等效换热参数 $h_j/\lambda$ & $t_u,t_p,t_d$ & 上穿 $217\,\dC$、峰值、下穿时刻 \\
+    $A_L,A_R$ & 峰值左、右侧超温面积 & $J_{\mathrm{sym}}$ & 峰值镜像对称指标 \\
+    $g_j$ & 第 $j$ 项工艺约束裕量 & $\Delta t$ & 数值计算时间步长/s \\
+    \bottomrule
+  \end{tabularx}
+\end{table}

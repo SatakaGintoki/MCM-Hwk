@@ -1,21 +1,4 @@
-"""
-问题四：阴影面积与炉温曲线对称性（单文件版）
-
-流程：
-1. 继承问题一标定参数；决策变量同问题三
-2. 对称性拆为归一化形状误差 J_shape 与持续时间误差 J_tau
-3. 目标：min (A_L, max(J_shape, J_tau))；主方法为 ε-约束
-4. 端点：读取问题三解，并在第四问细网格上重新校准面积端点；再求纯对称最优
-5. 对每个面积上限 ε_A，用 CDE+COBYLA 最小化新对称指标
-6. 过滤非支配点，按膝点（交叉检查最近理想点）选最终解
-7. 可选 NSGA-II 交叉验证
-
-运行：
-  python code/q4.py
-  python code/q4.py --fast
-  python code/q4.py --full
-  python code/q4.py --nsga
-"""
+"""问题四：用 epsilon 约束构造面积与对称性的 Pareto 前沿。"""
 from __future__ import annotations
 
 import argparse
@@ -49,18 +32,16 @@ VAR_NAMES = q3.VAR_NAMES
 CONSTRAINT_SCALE = q3.CONSTRAINT_SCALE
 SLOPE_UP_TOL = q3.SLOPE_UP_TOL
 EPS_AREA = 1e-9
+SYM_AREA_SCALE = (250.0 - 217.0) * 90.0
 
 
-# ---------------------------------------------------------------------------
-# 评价：工艺约束 + A_L/A_R + 对称指标
-# ---------------------------------------------------------------------------
 def _trapz(y: np.ndarray, x: np.ndarray) -> float:
     trap = getattr(np, "trapezoid", None) or np.trapz
     return float(trap(y, x))
 
 
 def shadow_area_interval(t: np.ndarray, T: np.ndarray, t0: float, t1: float) -> float:
-    """∫_{t0}^{t1} (T-217) dt，端点插值。"""
+    """Integrate superheat on a specified time interval."""
     if not (np.isfinite(t0) and np.isfinite(t1)) or t1 <= t0:
         return float("nan")
     mask = (t >= t0) & (t <= t1)
@@ -84,14 +65,7 @@ def shadow_area_interval(t: np.ndarray, T: np.ndarray, t0: float, t1: float) -> 
 def symmetry_metrics(
     t: np.ndarray, T: np.ndarray, tu: float, tp: float, td: float, dtau: float | None = None
 ) -> dict:
-    """计算镜像几何量与不受面积分母稀释的新对称指标。
-
-    J_shape 在左右各自的相对时间 s∈[0,1] 上比较归一化超温形状；
-    J_tau 衡量左右高于 217 °C 的持续时间差；
-    J_sym=max(J_shape,J_tau)，迫使优化器优先改善较差的一项。
-
-    旧指标 E_sym/(A_L+A_R) 保留为 J_overlap，只用于诊断，不再优化。
-    """
+    """Return mirrored superheat errors normalized by a fixed process scale."""
     tau_L = tp - tu
     tau_R = td - tp
     if tau_L <= 0 or tau_R <= 0:
@@ -122,7 +96,6 @@ def symmetry_metrics(
     n = max(int(np.ceil(tau_max / dtau)), 8)
     tau = np.linspace(0.0, tau_max, n + 1)
 
-    # 左侧：t = tp - tau；右侧：t = tp + tau；超出各自区间补 0
     tL = tp - tau
     tR = tp + tau
     TL = np.interp(tL, t, T, left=T[0], right=T[-1])
@@ -138,9 +111,6 @@ def symmetry_metrics(
     J_A = float(abs(A_L - A_R) / denom)
     J_tau = float(abs(tau_L - tau_R) / (tau_L + tau_R + EPS_AREA))
 
-    # 形状误差：先把左右各自的持续时间映射到相同相位 s∈[0,1]，
-    # 再以峰值超温归一化。这样不会把“左宽右窄”误当成形状差，
-    # 时间宽度差由 J_tau 单独、明确地惩罚。
     phase = np.linspace(0.0, 1.0, n + 1)
     TL_phase = np.interp(tp - phase * tau_L, t, T)
     TR_phase = np.interp(tp + phase * tau_R, t, T)
@@ -149,9 +119,7 @@ def symmetry_metrics(
     thetaR = np.clip((TR_phase - 217.0) / peak_excess, 0.0, 1.0)
     J_shape = float(np.clip(_trapz(np.abs(thetaL - thetaR), phase), 0.0, 1.0))
 
-    # 最坏分量准则不依赖人为加权：只有形状和持续时间都改善，
-    # 主指标才会显著下降。
-    J_sym = float(max(J_shape, J_tau))
+    J_sym = float(E_sym / SYM_AREA_SCALE)
 
     return {
         "A_L": float(A_L),
@@ -187,9 +155,9 @@ class Eval4:
     J_tau: float
     V: float
     feasible_process: bool
-    feasible: bool  # 含面积上限
+    feasible: bool
     metrics: dict
-    constraints: np.ndarray  # c1..c10
+    constraints: np.ndarray
     margins: dict
     t: np.ndarray | None = None
     T: np.ndarray | None = None
@@ -375,9 +343,6 @@ def deb_better_jsym(a: Eval4, b: Eval4) -> bool:
     return a.V < b.V
 
 
-# ---------------------------------------------------------------------------
-# 初始种群 / CDE / COBYLA
-# ---------------------------------------------------------------------------
 def init_population(
     npop: int,
     rng: np.random.Generator,
@@ -534,9 +499,6 @@ def multi_start_cobyla(
     return best
 
 
-# ---------------------------------------------------------------------------
-# Pareto / 膝点
-# ---------------------------------------------------------------------------
 def nondominated(points: list[Eval4]) -> list[Eval4]:
     feas = [p for p in points if p.feasible_process and np.isfinite(p.A_L)]
     keep = []
@@ -553,7 +515,6 @@ def nondominated(points: list[Eval4]) -> list[Eval4]:
         if not dominated:
             keep.append(a)
     keep.sort(key=lambda e: e.A_L)
-    # 不重复保留同一目标点；重复点会制造虚假的竖直/水平前沿线段。
     unique: list[Eval4] = []
     for e in keep:
         if not any(abs(e.A_L - u.A_L) <= 1e-7 and abs(e.J_sym - u.J_sym) <= 1e-10 for u in unique):
@@ -623,8 +584,6 @@ def select_knee_and_ideal(
             J_hat = (e.J_sym - Jmin) / dJ
         A_hat = float(np.clip(A_hat, 0.0, 1.0))
         J_hat = float(np.clip(J_hat, 0.0, 1.0))
-        # 有符号距离：正值才表示点位于端点连线靠近理想点的一侧。
-        # 取绝对值会把“远离理想点的内凹平台”误判为膝点。
         d_line = (1.0 - A_hat - J_hat) / np.sqrt(2.0)
         D_ideal = float(np.hypot(A_hat, J_hat))
         rows.append(
@@ -640,7 +599,6 @@ def select_knee_and_ideal(
             }
         )
 
-    # 膝点：内部点到端点连线距离最大
     interior = [r for r in rows if 0.02 < r["A_hat"] < 0.98]
     if not interior:
         interior = rows
@@ -649,9 +607,6 @@ def select_knee_and_ideal(
     return knee_row["ev"], ideal_row["ev"], rows
 
 
-# ---------------------------------------------------------------------------
-# 轻量 NSGA-II（交叉验证）
-# ---------------------------------------------------------------------------
 def run_nsga2(
     plate: q1.PlateParams,
     npop: int,
@@ -666,7 +621,6 @@ def run_nsga2(
     pop = [evaluate_z4(z, plate, counter=counter, dt=dt, eps_A=None) for z in pop_z]
 
     def dominates(a: Eval4, b: Eval4) -> bool:
-        # 约束支配
         if a.feasible_process and not b.feasible_process:
             return True
         if (not a.feasible_process) and b.feasible_process:
@@ -746,7 +700,6 @@ def run_nsga2(
             p1 = tournament(pop[i1], pop[i2], rank[i1], rank[i2], crowd[i1], crowd[i2])
             j1, j2 = rng.choice(npop, size=2, replace=False)
             p2 = tournament(pop[j1], pop[j2], rank[j1], rank[j2], crowd[j1], crowd[j2])
-            # SBX + 多项式变异（复用 q3）
             c1z, c2z = q3._sbx(p1.z, p2.z, rng)
             c1z = q3._poly_mutate(c1z, rng)
             child = evaluate_z4(c1z, plate, counter=counter, dt=dt, eps_A=None)
@@ -776,9 +729,6 @@ def run_nsga2(
     return nondominated(pop)
 
 
-# ---------------------------------------------------------------------------
-# I/O / 绘图
-# ---------------------------------------------------------------------------
 def load_plate() -> q1.PlateParams:
     return q3.load_plate()
 
@@ -922,7 +872,7 @@ def plot_mirror(ev: Eval4, path: Path) -> None:
     ax.set_ylabel("归一化超温")
     ax.set_title(
         f"形状 J_shape={ev.J_shape:.4f}, 时间 J_tau={ev.J_tau:.4f}\n"
-        f"主指标 max={ev.J_sym:.4f}"
+        f"固定尺度镜像指标 J_sym={ev.J_sym:.4f}"
     )
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
@@ -993,9 +943,6 @@ def neighborhood_check(ev: Eval4, plate: q1.PlateParams, dt: float) -> list[dict
     return rows
 
 
-# ---------------------------------------------------------------------------
-# 主程序
-# ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="问题四：面积—对称性双目标优化")
     p.add_argument("--fast", action="store_true")
@@ -1074,7 +1021,6 @@ def main() -> None:
     y3_raw, A3_file = load_q3_solution()
     print(f"读取问题三解: y={y3_raw}, A_file={A3_file:.4f}")
 
-    # ---- 阶段一：读取旧端点，搜索纯对称端点 ----
     print("\n[1] 复算问题三输入解 ...")
     y3_input_ev = evaluate_y4(y3_raw, plate, dt=cfg["dt_verify"], keep_curve=True)
     print(
@@ -1097,7 +1043,7 @@ def main() -> None:
     best_s = multi_start_cobyla(
         pop_s, plate, cfg["dt_search"], None, n_elites=cfg["elites"], maxfun=cfg["cobyla_maxfun"]
     )
-    # 在高精度模型上重新排序并局部优化，不能只把粗网格结果拿来复算。
+    # Re-rank search candidates on the verification grid.
     hi_seed_s = select_elites(pop_s + [best_s], n=max(2, cfg["elites"] * 2), min_dist=0.02)
     hi_pop_s = [evaluate_y4(e.y, plate, dt=cfg["dt_refine"]) for e in hi_seed_s]
     best_s_hi = multi_start_cobyla(
@@ -1116,8 +1062,7 @@ def main() -> None:
         f"用时 {time.perf_counter()-t0:.1f}s"
     )
 
-    # 问题三旧结果可能只在粗网格上优化。利用已产生的种群重新校准面积端点，
-    # 防止 Pareto 前沿出现“比问题三最优点面积还小”的逻辑矛盾。
+    # Recalibrate the area endpoint before constructing the Pareto front.
     print("[3] 在细网格上校准最小面积端点 ...")
     t_area = time.perf_counter()
     y_area_ev = calibrate_area_endpoint(
@@ -1142,7 +1087,6 @@ def main() -> None:
     else:
         As_scan = As
 
-    # 对称搜索种群中的可行个体也进入候选
     print("\n[4] ε-约束扫描 Pareto ...")
     lambdas = list(cfg["lambdas"])
     pareto_cands: list[Eval4] = [y3_input_ev, y_area_ev, ys_ev]
@@ -1153,7 +1097,6 @@ def main() -> None:
     prev_y = y_area_ev.y.copy()
     for k, lam in enumerate(lambdas):
         eps_A = A3 + float(lam) * (As_scan - A3)
-        # 粗网格只负责产生候选；面积边界在高精度局部阶段重新执行。
         eps_search = eps_A + 2.0
         print(f"  λ={lam:.2f}, ε_A={eps_A:.3f} ...", end="", flush=True)
         rng_k = np.random.default_rng(args.seed + 10 + k)
@@ -1175,7 +1118,6 @@ def main() -> None:
             n_elites=cfg["elites"],
             maxfun=cfg["cobyla_maxfun"],
         )
-        # 用较细网格重新排序若干粗网格精英，并再次运行 COBYLA。
         hi_seed_k = select_elites(pop_k + [best_k], n=max(2, cfg["elites"] * 2), min_dist=0.02)
         eps_refine = eps_A + 0.35
         hi_pop_k = [
@@ -1203,7 +1145,6 @@ def main() -> None:
 
     exact_front = nondominated(pareto_cands)
 
-    # 若 ε 扫描又发现了更小面积点，同步更新面积端点，避免端点被前沿支配。
     if exact_front:
         area_front = min(exact_front, key=lambda e: (e.A_L, e.J_sym))
         if area_front.A_L < y_area_ev.A_L - 1e-7:
@@ -1211,8 +1152,7 @@ def main() -> None:
                 area_front.y, plate, dt=cfg["dt_verify"], keep_curve=True
             )
 
-    # 对数值平台作 ε-支配筛选，再沿相邻工艺参数做连续插值并细网格复核。
-    # 这一步只补充实际可行点，不对目标值进行图形插值。
+    # Densified candidates are simulated again; objective values are never interpolated.
     front = densify_front(
         exact_front,
         plate,
@@ -1221,8 +1161,6 @@ def main() -> None:
         j_tol=5e-4,
     )
 
-    # 加密点先用于定位最近理想区域，再对该区域做一次真正的约束局部优化；
-    # 最终推荐解因此不是简单的参数线性插值。
     if front:
         A_tmp = [e.A_L for e in front]
         J_tmp = [e.J_sym for e in front]
@@ -1268,8 +1206,6 @@ def main() -> None:
                 )
     print(f"  精确非支配点数: {len(exact_front)}; ε-支配并加密后: {len(front)}")
 
-    # ε 扫描可能找到比独立端点搜索更好的纯对称解；报告端点必须取
-    # 全部已发现非支配解中的最小 J_sym，避免“对称端点”被前沿点支配。
     if front:
         ys_front = min(front, key=lambda e: (e.J_sym, e.A_L))
         if ys_front.J_sym < ys_ev.J_sym - 1e-10 or (
@@ -1278,31 +1214,36 @@ def main() -> None:
         ):
             ys_ev = evaluate_y4(ys_front.y, plate, dt=cfg["dt_verify"], keep_curve=True)
 
-    # 膝点选择用实际观察到的端点范围
     A_front = [e.A_L for e in front]
     J_front = [e.J_sym for e in front]
     A3_use, As_use = min(A_front), max(A_front)
     Jmin_use, J3_use = min(J_front), max(J_front)
     knee, ideal, norm_rows = select_knee_and_ideal(front, A3_use, As_use, J3_use, Jmin_use)
-    # 非凸或近似线性的前沿上，几何膝点对采样密度较敏感；最近理想点
-    # 同时惩罚两个归一化目标，作为主推荐点更稳定。膝点保留作诊断。
-    final = ideal if ideal is not None else (knee if knee is not None else y_area_ev)
+    # Select one scheme by equal-weight minimax relative regret.
+    decision_pool = exact_front if exact_front else front
+    A_min_dec = min(e.A_L for e in decision_pool)
+    J_min_dec = min(e.J_sym for e in decision_pool)
+    final = min(
+        decision_pool,
+        key=lambda e: max(
+            (e.A_L - A_min_dec) / max(A_min_dec, EPS_AREA),
+            (e.J_sym - J_min_dec) / max(J_min_dec, EPS_AREA),
+        ),
+    )
     if ideal is not None:
         print(
             f"\n[5] 膝点: A_L={knee.A_L:.4f}, J_sym={knee.J_sym:.6f}; "
-            f"最近理想点/推荐解: A_L={ideal.A_L:.4f}, J_sym={ideal.J_sym:.6f}"
+            f"最近理想点: A_L={ideal.A_L:.4f}, J_sym={ideal.J_sym:.6f}; "
+            f"最小最大相对遗憾推荐解: A_L={final.A_L:.4f}, J_sym={final.J_sym:.6f}"
         )
-    # 若前沿几乎单点，最终仍优先报告校准后的面积端点。
     if abs(As_use - A3_use) < 1.0 and abs(J3_use - Jmin_use) < 1e-4:
         print("  Pareto 几乎退化为单点，最终采用校准后的面积端点。")
         final = y_area_ev
         knee = y_area_ev
         ideal = y_area_ev
 
-    # 最终高精度曲线（保证带曲线）
     final = evaluate_y4(final.y, plate, dt=cfg["dt_verify"], keep_curve=True)
 
-    # ---- NSGA-II 可选 ----
     nsga_front: list[Eval4] = []
     if args.nsga:
         print("\n[6] NSGA-II 交叉验证 ...")
@@ -1370,6 +1311,11 @@ def main() -> None:
             k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in cfg.items()
         },
         "seed": args.seed,
+        "decision_rule": {
+            "name": "equal-weight minimax relative regret",
+            "formula": "min max((A-A_min)/A_min, (J-J_min)/J_min)",
+            "note": "Pareto 全集仍同时报告；单一推荐仅用于需要唯一工艺参数时。",
+        },
         "endpoint_q3_input": ev_to_dict(y3_input_ev),
         "endpoint_q3": ev_to_dict(y_area_ev),
         "endpoint_area": ev_to_dict(y_area_ev),
@@ -1394,6 +1340,7 @@ def main() -> None:
             "eta_soak": plate.eta_soak,
             "eta_ref": plate.eta_ref,
             "eta_cool": plate.eta_cool,
+            "eta_cool_late": plate.eta_cool_late,
             "eta_r": plate.eta_r,
             "alpha": plate.alpha,
         },
@@ -1419,7 +1366,6 @@ def main() -> None:
     )
     plot_curve(ys_ev, FIG_DIR / "sym_endpoint.png", f"对称端点  A_L={ys_ev.A_L:.2f}, J={ys_ev.J_sym:.4f}")
 
-    # 与问题三对比
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(y_area_ev.t, y_area_ev.T, label="面积端点（细网格校准）", lw=1.6)
     ax.plot(final.t, final.T, label="问题四最终", lw=1.6)

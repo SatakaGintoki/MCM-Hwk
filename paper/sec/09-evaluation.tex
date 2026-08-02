@@ -1,0 +1,71 @@
+\section{模型评价}
+
+\subsection{模型特点}
+
+第一，模型把炉膛空间温度场与焊接区域热响应分开。速度只改变位置--时间映射，换热参数在标定后保持不变，因此四问比较的是同一台炉子上的不同工艺，而不是随候选解改变的模型。
+
+第二，关键结构均有明确来源。普通间隙的线性温度来自无热源稳态导热方程；炉口和冷却入口的 Hermite 函数只用于保证边界值与梯度连续；板内温度来自非稳态导热方程和 Robin 边界。候选模型又通过拟合误差和 Jacobian 条件数共同筛选，避免用不可辨识的额外参数换取有限的残差下降。
+
+第三，算法与问题结构相匹配。问题二是一维边界问题，使用扫描和求根能给出确定的双侧证据；问题三、四才使用群体搜索，并以局部精修、细网格复核和算法对照补强结果。对理论最优解和工程余量方案分别报告，也区分了数学目标与实际投产需求。
+
+\subsection{模型局限}
+
+等效环境温度场 $C(x)$ 没有直接求解炉内气流和辐射场，炉口影响长度及急冷宽度仍属于低维等效描述；若能获得 CFD 结果或炉内多点温度，可进一步确定这些空间结构。现有参数只由一条中心温度曲线标定，对流、辐射和材料物性不能分别辨识，局部残差也表明回流与急冷转换仍有改进空间。
+
+模型忽略了板面方向的温差和元件热容差异。对尺寸较大、铜层分布不均或元件热容差别显著的电路板，应扩展为二维或三维传热模型。问题三最优点紧贴峰值下限，对模型误差敏感；工程余量方案虽改善单因素扰动下的可行率，但更完整的做法应是利用多工况数据建立参数分布，再进行鲁棒优化或机会约束优化。
+
+多目标结论还依赖对称性的定义和生产偏好。本文的镜像误差兼顾持续时间与形状，但若企业更关注热应力，可进一步提高斜率差的权重。Pareto 前沿的部分细小改善已接近离散误差，因此没有把这些数值差异解释为真实工艺收益。
+
+\section{结论}
+
+本文以同一套“等效环境温度场--瞬态导热”模型贯穿四问。主要结果汇总于表 \ref{tab:final}。
+
+\begin{table}[htbp]
+  \centering
+  \caption{四问主要结果}
+  \label{tab:final}
+  \footnotesize
+  \begin{tabularx}{\textwidth}{c>{\raggedright\arraybackslash}p{5.8cm}Y}
+    \toprule
+    问题 & 工艺参数 & 主要结论 \\
+    \midrule
+    一 & 温区 $173/198/230/257\,\dC$，$v=78\,$cm/min（均为给定）
+      & 四点温度为 $131.15,169.36,189.28,225.68\,\dC$；峰值 $240.63\,\dC$，工艺指标均合格。 \\
+    二 & 温区 $182/203/237/254\,\dC$（给定），$\bm{v=79.60}\,$cm/min
+      & 连续上界 $79.5936$；上界由峰值下限控制，可行区间约为 $[68.00,79.59]$。 \\
+    三 & \shortstack[l]{温区 $185.000/198.282\,\dC$\\$238.005/265.000\,\dC$\\$v=99.5068\,$cm/min}
+      & 最小升温侧面积 $\bm{410.6806\,\dC\!\cdot\!\mathrm s}$；另给出留有峰值余量的工程方案。 \\
+    四 & \shortstack[l]{温区 $171.395/188.940\,\dC$\\$226.371/264.945\,\dC$\\$v=89.6887\,$cm/min}
+      & 对称优先方案 $A_L=418.1586\,\dC\!\cdot\!\mathrm s$，$\bm{J_{\mathrm{sym}}=0.024870}$。 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+问题一表明，炉内未控温间隙不应简单视为 $25\,\dC$，而应由稳定炉膛中两侧温区共同决定；焊点中心温度则由外部温度场经过传热滞后形成。问题二进一步说明最大速度不是由斜率限制，而是由吸热时间不足导致的峰值下限控制。问题三的面积最优点落在峰值约束边界，反映出“提高预热、缩短停留、压低峰值”的共同作用。问题四没有与偏好无关的唯一折中点，因此给出完整实用前沿，并在明确强调对称性的条件下选择推荐方案。
+
+\begin{thebibliography}{99}
+\addcontentsline{toc}{section}{参考文献}
+\footnotesize
+
+\bibitem{eftychiou1993}
+Eftychiou M A, Bergman T L, Masada G Y. A Detailed Thermal Model of the Infrared Reflow Soldering Process[J]. Journal of Electronic Packaging, 1993, 115(1): 55--62.
+
+\bibitem{illes2010}
+Ill\'{e}s B. Measuring heat transfer coefficient in convection reflow ovens[J]. Measurement, 2010, 43(9): 1134--1141.
+
+\bibitem{patankar1980}
+Patankar S V. Numerical Heat Transfer and Fluid Flow[M]. New York: Hemisphere Publishing, 1980.
+
+\bibitem{storn1997}
+Storn R, Price K. Differential Evolution---A Simple and Efficient Heuristic for Global Optimization over Continuous Spaces[J]. Journal of Global Optimization, 1997, 11(4): 341--359.
+
+\bibitem{deb2000}
+Deb K. An efficient constraint handling method for genetic algorithms[J]. Computer Methods in Applied Mechanics and Engineering, 2000, 186(2--4): 311--338.
+
+\bibitem{powell1994}
+Powell M J D. A Direct Search Optimization Method That Models the Objective and Constraint Functions by Linear Interpolation[M]. Advances in Optimization and Numerical Analysis. Dordrecht: Springer, 1994: 51--67.
+
+\bibitem{miettinen1998}
+Miettinen K. Nonlinear Multiobjective Optimization[M]. Boston: Kluwer Academic Publishers, 1998.
+
+\end{thebibliography}

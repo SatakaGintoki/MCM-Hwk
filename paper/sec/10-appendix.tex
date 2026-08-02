@@ -1,0 +1,93 @@
+\appendix
+\addcontentsline{toc}{section}{附录}
+
+\section{核心程序}
+
+以下代码直接节选自实际运行的四个主程序，只保留环境温度场、隐式导热、约束边界、面积目标、差分进化和对称指标等决定结果的部分。绘图、命令行参数和文件写入不再重复列出，完整程序仍随论文文件一并提交。
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\fontsize{7}{8}\selectfont,
+  columns=fullflexible,
+  keepspaces=true,
+  tabsize=4,
+  numbers=none,
+  captionpos=t,
+  aboveskip=6pt,
+  belowskip=8pt
+}
+
+\lstinputlisting[firstline=105,lastline=132,caption={等效环境温度场的边界平滑（\texttt{q1.py}）}]{../code/q1.py}
+
+\lstinputlisting[firstline=233,lastline=302,caption={半厚度一维非稳态导热的隐式求解（\texttt{q1.py}）}]{../code/q1.py}
+
+\lstinputlisting[firstline=143,lastline=230,caption={约束边界定位与最大可行速度提取（\texttt{q2.py}）}]{../code/q2.py}
+
+\lstinputlisting[firstline=145,lastline=167,caption={液相线以上升温侧面积计算（\texttt{q3.py}）}]{../code/q3.py}
+
+\lstinputlisting[firstline=296,lastline=372,caption={Deb 规则与约束差分进化主循环（\texttt{q3.py}）}]{../code/q3.py}
+
+\lstinputlisting[firstline=65,lastline=142,caption={固定尺度归一化的镜像对称指标（\texttt{q4.py}）}]{../code/q4.py}
+
+\section{程序与结果文件}
+
+主程序及辅助程序的作用见表 \ref{tab:code}。
+
+\begin{table}[htbp]
+  \centering
+  \caption{程序文件及功能}
+  \label{tab:code}
+  \footnotesize
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{5.2cm}Y}
+    \toprule
+    文件 & 功能 \\
+    \midrule
+    \texttt{code/q1.py} & 等效环境温度场、瞬态导热求解、参数辨识和问题一预测 \\
+    \texttt{code/q2.py} & 工艺指标计算、速度扫描、Brent 边界求根 \\
+    \texttt{code/q3.py} & 面积目标、约束差分进化、COBYLA 精修及算法对照 \\
+    \texttt{code/q4.py} & 镜像误差、$\varepsilon$-约束子问题及 Pareto 筛选 \\
+    \texttt{code/finalize\_results.py} & 统一细网格复算、时间步与参数敏感性检验 \\
+    \texttt{code/closeout\_fix.py} & 按 $\Delta t=0.025\,$s 刷新正式结果文件 \\
+    \texttt{code/redraw\_paper\_figures.py} & 从正式结果文件生成论文中的 7 幅图 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+推荐在项目根目录依次运行：
+
+\begin{lstlisting}
+python code/q1.py
+python code/q2.py
+python code/q3.py
+python code/q4.py
+python code/finalize_results.py
+python code/closeout_fix.py
+python code/redraw_paper_figures.py
+\end{lstlisting}
+
+\section{正文数据的追溯关系}
+
+\begin{table}[htbp]
+  \centering
+  \caption{正式结果文件与正文内容的对应关系}
+  \label{tab:outputs}
+  \footnotesize
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{6.5cm}Y}
+    \toprule
+    文件 & 内容 \\
+    \midrule
+    \texttt{result.csv} & 题目要求提交的问题一 $0.5\,$s 间隔中心温度，共 671 行 \\
+    \texttt{results/q1/summary.json} & 标定误差、换热参数、四点温度和问题一指标 \\
+    \texttt{results/q2/summary.json} & 最大速度、连续边界、有效约束和边界裕量 \\
+    \texttt{results/q2/speed\_scan.csv} & 图 \ref{fig:q2scan} 的速度扫描数据 \\
+    \texttt{results/q3/summary.json} & 问题三最小面积解、工艺参数和算法对照 \\
+    \texttt{results/q3/best\_curve.csv} & 图 \ref{fig:q3curve} 的炉温曲线 \\
+    \texttt{results/q4/pareto\_exact.csv} & 6 个严格非支配候选 \\
+    \texttt{results/q4/pareto\_front.csv} & 表 \ref{tab:front} 的 3 个实用 Pareto 方案 \\
+    \shortstack[l]{\ttfamily results/verification/\\timestep\_convergence.csv} & 表 \ref{tab:grid} 的时间步收敛数据 \\
+    \shortstack[l]{\ttfamily results/verification/\\param\_sensitivity.csv} & 图 \ref{fig:sens} 的单因素敏感性数据 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+数值优化具有随机初始化。程序固定随机种子 2020 以便复现本文结果；若改变随机种子，应以 $0.025\,$s 网格重新检查可行性，并报告可行解中的最小目标值，而不能直接采用粗网格搜索输出。

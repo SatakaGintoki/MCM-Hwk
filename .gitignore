@@ -22,6 +22,10 @@ venv/
 *.synctex.gz
 *.toc
 *.xdv
+/paper/paper.pdf
+
+# 第三方参考资料（不随公开仓库分发）
+/references/*.pdf
 
 # 编辑器和系统文件
 .vscode/
@@ -33,5 +37,5 @@ Thumbs.db
 # 临时文件
 tmp/
 temp/
+.codex_tmp/
 *.tmp
-

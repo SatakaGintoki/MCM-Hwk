@@ -1,172 +1,94 @@
+% 2020 年高教社杯全国大学生数学建模竞赛 A 题：炉温曲线
+% 编译：xelatex paper.tex（两次）
 \documentclass[12pt,a4paper]{ctexart}
 
-\usepackage[left=2.5cm,right=2.5cm,top=2.6cm,bottom=2.5cm]{geometry}
+\usepackage[left=2.6cm,right=2.6cm,top=2.6cm,bottom=2.6cm]{geometry}
 \usepackage{amsmath,amssymb,bm}
-\usepackage{booktabs,multirow,array}
-\usepackage{graphicx}
-\usepackage{float}
+\usepackage{booktabs,multirow,array,tabularx}
+\usepackage{graphicx,float}
 \usepackage{xcolor}
 \usepackage{enumitem}
 \usepackage{setspace}
 \usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{listings}
 \usepackage[hidelinks]{hyperref}
 
 \graphicspath{{../figures/}}
 \setlength{\parindent}{2em}
-\setlength{\parskip}{0pt}
-\linespread{1.25}
+\setlength{\parskip}{1pt}
+\linespread{1.23}
+\AtBeginDocument{%
+  \setlength{\abovedisplayskip}{6pt plus 2pt minus 2pt}%
+  \setlength{\belowdisplayskip}{6pt plus 2pt minus 2pt}%
+}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\renewcommand{\topfraction}{0.90}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.72}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[C]{数学建模论文}
 \fancyfoot[C]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrulewidth}{0pt}
+\captionsetup{font=small,labelsep=quad,skip=4pt}
 
-\newcommand{\keywords}[1]{
-  \par\noindent\textbf{关键词：}#1
+\newcommand{\dC}{\ensuremath{^{\circ}\mathrm{C}}}
+\newcommand{\mdC}{{}^{\circ}\mathrm{C}}
+\newcommand{\keywords}[1]{\par\vspace{0.7em}\noindent\textbf{关键词：}#1}
+\newcommand{\abskey}[1]{{\heiti\boldmath #1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{gray!55},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=none,
 }
-
-\title{\heiti\zihao{2} 论文题目}
-\author{}
-\date{}
 
 \begin{document}
 
-\maketitle
-\thispagestyle{empty}
+\begin{center}
+  {\heiti\zihao{3} 基于瞬态导热模型的回焊炉温曲线优化}
+\end{center}
+\vspace{0.5em}
 
-\begin{abstract}
-本文针对……问题，建立……模型。首先，……；其次，……；再次，……；最后，……。
-模型结果表明……。本文所建模型具有……特点，可为……提供参考。
+\begin{center}\textbf{\zihao{4}摘\quad 要}\end{center}
+\vspace{-0.2em}
 
-\keywords{关键词一；关键词二；关键词三；关键词四}
-\end{abstract}
+{\small
+\setlength{\parindent}{2em}
+\linespread{1.08}\selectfont
+
+回焊炉各温区的空气温度在生产时保持稳定，但随传送带移动的焊接区域具有明显热惯性，其中心温度既不等于温区设定值，也不会在温区交界处突变。针对这一特点，本文把过程分为两个层次：先建立仅随位置变化的\abskey{等效环境温度场}，再建立焊接区域厚度方向的\abskey{一维非稳态导热模型}。模型参数\abskey{仅利用附件实验曲线辨识一次}，随后保持不变，以保证不同速度和温区设定下的预测具有统一物理含义。
+
+对于问题一，受控温区取其设定温度；普通 $5\,$cm 间隙由无热源稳态导热方程得到\abskey{线性过渡}；炉口边界影响和冷却区入口分别用\abskey{三次 Hermite 函数}平滑连接。焊接区域采用对称半厚度模型，表面施加\abskey{Robin 换热边界}，并用隐式差分求解。五个分段等效换热参数的辨识结果使实验曲线的 \abskey{RMSE 为 $1.1197\,\dC$}、MAE 为 $0.7167\,\dC$。代入题设新工况后，小温区 3、6、7 中点和小温区 8 出口处的中心温度分别为 $131.15$、$169.36$、$189.28$ 和 $225.68\,\dC$，完整结果已按 $0.5\,$s 间隔写入 \texttt{result.csv}。
+
+对于问题二，将峰值、升降温速率和两个特征时长写成\abskey{约束裕量}。由于决策变量只有速度，采用\abskey{扫描与 Brent 边界求根}，得到连续上界 $79.5936\,$cm/min；按题目精度报告\abskey{最大允许速度为 $79.60\,$cm/min}。限制速度继续提高的是峰值温度下限，而低速端又受液相线以上时间上限限制，可行速度区间约为 $[68.00,79.59]\,$cm/min。
+
+对于问题三，以四组温区温度和传送速度为\abskey{五维决策变量}，以首次上穿 $217\,\dC$ 到峰值之间的超温面积为目标。采用带 Deb 可行性规则的\abskey{差分进化全局搜索}，再用\abskey{多起点 COBYLA}在约束边界附近精修，并通过三级时间网格逐级复核。所得\abskey{最小面积为 $410.6806\,\dC\!\cdot\!\mathrm s$}，对应温区设定 $185.000/198.282/238.005/265.000\,\dC$，速度 $99.507\,$cm/min。考虑到该解紧贴峰值下限，另给出留有 $1\,\dC$ 峰值余量的工程方案。
+
+对于问题四，以峰值时刻为镜面对液相线以上的左右曲线作比较，用\abskey{固定工艺尺度归一化镜像误差}，避免以候选曲线自身面积作分母所造成的指标失真。采用\abskey{$\varepsilon$-约束法}得到面积与对称性的 Pareto 解集。若优先改善对称性，推荐温区设定 $171.395/188.940/226.371/264.945\,\dC$、速度 $89.689\,$cm/min，此时面积为 $418.1586\,\dC\!\cdot\!\mathrm s$，对称指标为 $0.024870$；相对于最小面积解，\abskey{以 $1.82\%$ 的面积增加换得 $6.61\%$ 的对称性改善}。
+
+\keywords{回焊炉；炉温曲线；非稳态导热；参数辨识；约束优化；Pareto 前沿}
+}
 
 \newpage
-\tableofcontents
-\newpage
-
-\section{问题重述}
-
-结合题目背景，用自己的语言概括研究对象、已知条件和各小问任务。
-
-\section{问题分析}
-
-说明各问题的建模目标、输入输出、相互关系及总体求解流程。
-
-\begin{figure}[H]
-  \centering
-  % \includegraphics[width=0.9\textwidth]{workflow.pdf}
-  \caption{总体建模流程图}
-  \label{fig:workflow}
-\end{figure}
-
-\section{模型假设}
-
-\begin{enumerate}[label=\arabic*.]
-  \item 假设一；
-  \item 假设二；
-  \item 假设三。
-\end{enumerate}
-
-\section{符号说明}
-
-\begin{table}[H]
-  \centering
-  \caption{主要符号说明}
-  \label{tab:symbols}
-  \begin{tabular}{clc}
-    \toprule
-    符号 & 含义 & 单位 \\
-    \midrule
-    $x_i$ & 第$i$个输入变量 & -- \\
-    $y_t$ & 时刻$t$的目标变量 & -- \\
-    $\hat y_t$ & 模型预测值 & -- \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\section{数据预处理}
-
-说明缺失值、异常值、时间对齐、标准化及训练集与测试集划分方法。
-
-\section{问题一的模型建立与求解}
-
-\subsection{模型建立}
-
-给出模型原理、变量定义和数学表达式。例如：
-\begin{equation}
-  y_t=f(\bm{x}_t;\bm{\theta})+\varepsilon_t.
-  \label{eq:q1-model}
-\end{equation}
-
-\subsection{参数求解与结果分析}
-
-说明参数估计方法、评价指标和主要结论。
-
-\section{问题二的模型建立与求解}
-
-\subsection{模型建立}
-
-写明问题二相对于问题一新增的机制、约束或优化目标。
-
-\subsection{模型检验}
-
-给出误差分析、对照实验或敏感性分析。
-
-\section{问题三的模型建立与求解}
-
-\subsection{模型建立}
-
-说明动态过程、预测方法或机理与数据驱动模型的结合方式。
-
-\subsection{结果分析}
-
-展示指定情景下的预测结果与模型解释。
-
-\section{问题四的模型建立与求解}
-
-\subsection{评价指标与分级方法}
-
-说明指标构造、权重或阈值来源以及分级依据。
-
-\subsection{评价结果}
-
-汇总风险等级、分类结果和管理建议。
-
-\section{模型评价}
-
-\subsection{模型优点}
-
-\begin{enumerate}[label=\arabic*.]
-  \item 优点一；
-  \item 优点二。
-\end{enumerate}
-
-\subsection{模型不足与改进}
-
-\begin{enumerate}[label=\arabic*.]
-  \item 不足与改进方向一；
-  \item 不足与改进方向二。
-\end{enumerate}
-
-\section{结论}
-
-按问题顺序概括主要模型、关键数值结果和实际意义。
-
-\begin{thebibliography}{99}
-
-\bibitem{reference1}
-作者. 文献题目[J]. 期刊名称, 年份, 卷(期): 页码.
-
-\bibitem{reference2}
-Author. Title of the reference[J]. Journal, Year, Volume(Issue): Pages.
-
-\end{thebibliography}
-
-\appendix
-\section{程序与补充材料说明}
-
-列出各代码文件、结果表格和附件的对应关系。
+\input{sec/01-restate}
+\input{sec/02-analysis}
+\input{sec/03-assumption}
+\input{sec/04-q1}
+\input{sec/05-q2}
+\input{sec/06-q3}
+\input{sec/07-q4}
+\input{sec/08-validation}
+\input{sec/09-evaluation}
+\input{sec/10-appendix}
 
 \end{document}

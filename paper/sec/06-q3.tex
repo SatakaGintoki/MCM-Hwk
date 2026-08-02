@@ -1,0 +1,120 @@
+\section{问题三：最小热暴露面积}
+
+\subsection{目标函数与约束}
+
+根据温区联动关系，取五维决策变量
+
+\begin{equation}
+  \bm y=(S_{1-5},S_6,S_7,S_{8-9},v)\in\Omega,
+\end{equation}
+
+其中
+
+\begin{equation}
+  \Omega=[165,185]\times[185,205]\times[225,245]
+  \times[245,265]\times[65,100].
+  \label{eq:omega}
+\end{equation}
+
+为避免温度和速度的量纲差异影响搜索，将每个变量线性映射到 $[0,1]$。记炉温曲线首次上穿 $217\,\dC$ 的时刻为 $t_u$，峰值时刻为 $t_p$。题目要求的阴影面积是升温侧超出液相线的面积，故目标函数为
+
+\begin{equation}
+  A(\bm y)=\int_{t_u}^{t_p}[T(t;\bm y)-217]\,\mathrm dt,
+  \qquad \min_{\bm y\in\Omega}A(\bm y).
+  \label{eq:q3obj}
+\end{equation}
+
+该面积同时反映液相线以上的温度和持续时间。数值积分前先按式 \eqref{eq:cross} 插值得到 $t_u$，再把 $t_u$ 和 $t_p$ 插入积分节点，用梯形公式计算，避免阈值端点落在两个时间节点之间造成固定偏差。
+
+约束仍为式 \eqref{eq:margins} 的十个工艺裕量。为比较不同单位的违反程度，令 $c_j=-g_j$，定义
+
+\begin{equation}
+  V(\bm y)=\sum_{j=1}^{10}\max\left(0,\frac{c_j(\bm y)}{s_j}\right),
+  \quad
+  \bm s=(3,3,3,3,60,60,50,50,10,10).
+  \label{eq:V}
+\end{equation}
+
+搜索时采用 Deb 可行性规则\cite{deb2000}：可行解优于不可行解；两个可行解比较面积；两个不可行解比较 $V$。这样无需人为选择罚函数系数。
+
+\subsection{全局搜索与边界精修}
+
+目标函数包含 PDE 仿真、阈值穿越、峰值和最大斜率运算，随参数变化呈分段光滑，直接使用解析梯度容易在事件点失效。本文采用两阶段求解：
+
+\begin{enumerate}[label=\textbf{步骤\arabic*.},leftmargin=3.7em,itemsep=2pt]
+  \item 用拉丁超立方产生初始种群，并加入问题二的可行工艺作为种子；采用差分进化的 rand/1 变异和二项交叉进行全局探索\cite{storn1997}，选择阶段执行 Deb 规则。
+  \item 从种群中选取空间上分散的可行精英，以其为起点运行 COBYLA\cite{powell1994}，在不求导的条件下细化目标和约束边界。
+\end{enumerate}
+
+计算精度与优化过程同时控制。全局搜索先在 $\Delta t=0.1\,$s 网格上进行；精英在 $0.05\,$s 网格上重新评价和排序；最终在 $0.025\,$s 网格上再次精修，并只接受此时仍满足全部约束的解。这里的“重新排序”很重要：最优解紧贴峰值下限，粗网格约 $0.1\,\dC$ 的峰值误差足以改变可行性，不能把粗网格排名直接沿用到最终结果。
+
+\subsection{最小面积解及其形成机理}
+
+在 $\Delta t=0.025\,$s 网格上得到的最优可行结果见表 \ref{tab:q3opt}，目标值为
+
+\begin{equation}
+  \boxed{A^*=410.680629\ \dC\!\cdot\!\mathrm s}.
+\end{equation}
+
+\begin{table}[htbp]
+  \centering
+  \caption{问题三最小面积解}
+  \label{tab:q3opt}
+  \small
+  \begin{tabular}{lr@{\qquad}lr}
+    \toprule
+    工艺参数 & 数值 & 炉温曲线指标 & 数值 \\
+    \midrule
+    $S_{1-5}$/\dC & $184.9996$ & 峰值温度/\dC & $240.000001$ \\
+    $S_6$/\dC & $198.2817$ & 最大升温速率/(\dC/s) & $2.37987$ \\
+    $S_7$/\dC & $238.0047$ & 最小降温速率/(\dC/s) & $-2.01852$ \\
+    $S_{8-9}$/\dC & $265.0000$ & $\tau_{150-190}$/s & $61.13214$ \\
+    $v$/(cm/min) & $99.5068$ & $\tau_{217}$/s & $54.03496$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+图 \ref{fig:q3curve} 给出目标面积。该解的结构并非偶然：$S_{1-5}$ 和 $S_{8-9}$ 到达上界，速度接近上界，而峰值恰好落在 $240\,\dC$ 下限。提高前段温度使焊点在进入回流区前已有较高温度，缩短从 $217\,\dC$ 升至峰值的时间；提高速度进一步压缩高温停留；峰值若继续升高则会直接增加面积。因此目标下降方向最终被峰值下限封住。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\textwidth]{paper/q3_area.pdf}
+  \caption{问题三最优炉温曲线及目标面积}
+  \label{fig:q3curve}
+\end{figure}
+
+为检查这一边界结构，对五个变量分别作温度 $\pm1\,\dC$、速度 $\pm0.5\,$cm/min 的单变量扰动。降低 $S_{1-5}$、$S_6$、$S_7$ 或 $S_{8-9}$，以及提高速度，都会使面积下降，但同时使峰值跌破 $240\,\dC$；其余保持可行的方向均使面积增加。该结果说明在所检验邻域内不存在可行的单变量下降方向。由于全局算法预算有限，本文将 $A^*$ 表述为“搜索并精修得到的最优可行值”，而不把随机搜索结果当作严格的全局最优证明。
+
+\subsection{工程余量方案}
+
+数学最优解的峰值裕量仅 $1.3\times10^{-6}\,\dC$，明显小于模型 RMSE 和实际温控波动，不能直接作为生产设定。为给出可实施方案，在原工艺约束之外加入
+
+\begin{equation}
+  T_{\max}\ge241\,\dC,\qquad
+  \tau_{150-190}\ge62\ \mathrm s,\qquad
+  \tau_{217}\ge42\ \mathrm s,
+\end{equation}
+
+并用同一算法重新优化，结果见表 \ref{tab:q3eng}。
+
+\begin{table}[htbp]
+  \centering
+  \caption{理论最小面积解与工程余量方案}
+  \label{tab:q3eng}
+  \small
+  \begin{tabular}{lrr}
+    \toprule
+    指标 & 最小面积解 & 工程余量方案 \\
+    \midrule
+    温区设定/\dC
+      & \shortstack{$185.000/198.282$\\$238.005/265.000$}
+      & \shortstack{$184.995/196.891$\\$241.766/264.998$} \\
+    $v$/(cm/min) & $99.5068$ & $98.1524$ \\
+    $A$/(\dC$\cdot$s) & $410.6806$ & $454.7800$ \\
+    峰值温度/\dC & $240.0000$ & $241.0018$ \\
+    参数单因素 $\pm5\%$ 扰动下可行数 & $6/10$ & $8/10$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+工程方案以 $10.74\%$ 的面积增加换得更大的峰值和特征时长余量。前者回答题目中的数学最优，后者用于说明实际投产时应为模型误差和设备波动预留空间。

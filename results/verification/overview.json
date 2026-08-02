@@ -1,24 +1,29 @@
 {
   "official_dt": 0.025,
-  "q3_theoretical_A": 344.54735962057794,
+  "q2_vmax": 79.6,
+  "q3_theoretical_A": 410.68062856897336,
   "q3_theoretical_y": {
-    "S1_5": 184.9994889190166,
-    "S6": 185.0001510664052,
-    "S7": 225.00490265687984,
-    "S8_9": 263.2235621650583,
-    "v": 96.12345926434594
+    "S1_5": 184.99961270347706,
+    "S6": 198.2817496293541,
+    "S7": 238.00466545898922,
+    "S8_9": 265.0,
+    "v": 99.50679661052996
   },
-  "q3_engineering_A": 377.9310074416077,
+  "q3_engineering_A": 454.77998656076556,
   "q3_engineering_y": {
-    "S1_5": 184.99950643373563,
-    "S6": 185.00001234802795,
-    "S7": 225.0,
-    "S8_9": 263.7257200462602,
-    "v": 94.4949479859226
+    "S1_5": 184.99469089145467,
+    "S6": 196.89077265453747,
+    "S7": 241.76565434550196,
+    "S8_9": 264.9984299065283,
+    "v": 98.15238602809669
   },
+  "q4_recommended_A_L": 418.15857548961026,
+  "q4_recommended_J_sym": 0.024869813233128164,
+  "q4_decision_rule": "equal-weight minimax relative regret",
   "outputs": {
-    "q3_summary": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\results\\q3\\summary.json",
-    "verification": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\results\\verification",
-    "figures_verification": "C:\\Users\\chens\\Desktop\\Github\\MCM-Hwk\\figures\\verification"
+    "q3_summary": "results/q3/summary.json",
+    "q4_summary": "results/q4/summary.json",
+    "verification": "results/verification",
+    "figures_verification": "figures/verification"
   }
 }
